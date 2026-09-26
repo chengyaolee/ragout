@@ -7,4 +7,7 @@ require (
 	github.com/pkoukk/tiktoken-go v0.1.8
 )
 
-require github.com/dlclark/regexp2 v1.10.0 // indirect
+require (
+	github.com/dlclark/regexp2 v1.10.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+)

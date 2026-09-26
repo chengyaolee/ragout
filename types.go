@@ -10,6 +10,7 @@ import (
 var ErrEmptyDocument = errors.New("ragout: Document has no content.")
 var ErrEmptyChunk = errors.New("ragout: Chunk content is empty.")
 var ErrEmptyEmbeddings = errors.New("ragout: Embedding returned is empty.")
+var ErrCountMismatch = errors.New("ragout: Embedding count does not match input.")
 var ErrDimensionMismatch = errors.New("ragout: Vector dimension does not match index.")
 var ErrNilCallback = errors.New("ragout: Stream callback is nil.")
 
