@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/chengyaolee/ragout"
-	"github.com/chengyaolee/ragout/embedder"
 )
 
 func TestMockEmbedder(t *testing.T) {

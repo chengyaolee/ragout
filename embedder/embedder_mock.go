@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"time"
+	"github.com/chengyaolee/ragout"
 )
 
 type MockEmbedder struct {
