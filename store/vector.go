@@ -94,14 +94,14 @@ func (vs *VectorStore) SearchDense(ctx context.Context, queryVector []float32, t
 }
 
 // CosineSimilarity computes the dot product between two normalized float32 vectors.
-func CosineSimilarity(a, b []float32) (float32, error) {
+func CosineSimilarity(a, b []float32) (float64, error) {
 	if len(a) != len(b) {
 		return 0.0, ragout.ErrDimensionMismatch
 	}
 
-	var dotProduct float32
+	var dotProduct float64
 	for i := range a {
-		dotProduct += a[i] * b[i]
+		dotProduct += float64(a[i]) * float64(b[i])
 	}
 	return dotProduct, nil
 }

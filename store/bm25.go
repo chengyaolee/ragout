@@ -218,11 +218,10 @@ func (idx *BM25Index) SearchSparse(ctx context.Context, query string, topK int, 
 		if !matches(chunk.Metadata, filter) {
 			continue
 		}
-		s := float32(score)
 		scored = append(scored, ragout.ScoredChunk{
 			Chunk:       chunk,
-			SparseScore: s,
-			Score:       s,
+			SparseScore: score,
+			Score:       score,
 		})
 	}
 

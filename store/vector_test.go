@@ -11,8 +11,8 @@ import (
 
 const floatTolerance = 1e-4
 
-func almostEqual(a, b float32) bool {
-	return math.Abs(float64(a-b)) <= floatTolerance
+func almostEqual(a, b float64) bool {
+	return math.Abs(a-b) <= floatTolerance
 }
 
 func TestCosineSimilarity(t *testing.T) {

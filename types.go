@@ -31,9 +31,9 @@ type Chunk struct {
 
 type ScoredChunk struct {
 	Chunk Chunk
-	DenseScore float32
-	SparseScore float32
-	Score float32
+	DenseScore float64
+	SparseScore float64
+	Score float64
 }
 
 type StreamCallback func(token string) error
@@ -67,7 +67,7 @@ type Reranker interface {
 }
 
 type Generator interface {
-	Generate(ctx context.Context, queryL string, context []ScoredChunk) (string, error)
+	Generate(ctx context.Context, query string, context []ScoredChunk) (string, error)
 	GenerateStream(ctx context.Context, query string, context []ScoredChunk, cb StreamCallback) error
 	GenerateIter(ctx context.Context, query string, context []ScoredChunk) iter.Seq2[string, error]
 }
