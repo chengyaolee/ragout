@@ -42,6 +42,25 @@ func TestMockReranker(t *testing.T) {
 	}
 }
 
+func TestMMRReranker_Interface(t *testing.T) {
+	var _ ragout.Reranker = (*MMRReranker)(nil)
+
+	candidates := []ragout.ScoredChunk{
+		{Chunk: ragout.Chunk{ID: "cats", Embedding: []float32{0.8, 0.6}}, Score: 0.9},
+		{Chunk: ragout.Chunk{ID: "cats-dup", Embedding: []float32{0.8, 0.6}}, Score: 0.9},
+		{Chunk: ragout.Chunk{ID: "dogs", Embedding: []float32{0.8, -0.6}}, Score: 0.8},
+	}
+
+	reranker := NewMMRReranker(nil, 0.7)
+	got, err := reranker.Rerank(context.Background(), "cats", candidates, 2)
+	if err != nil {
+		t.Fatalf("rerank: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2, got %d", len(got))
+	}
+}
+
 func idAt(chunks []ragout.ScoredChunk, i int) string {
 	if i >= len(chunks) {
 		return ""
