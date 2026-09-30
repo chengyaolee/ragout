@@ -34,3 +34,38 @@ func WithEmbedConcurrency(workers int) EngineOption {
         if workers > 0 { e.embedConcurrency = workers }
     }
 }
+
+// QueryParams holds per-query options.
+type QueryParams struct {
+	Filter     map[string]any
+	TopKRecall int
+	TopNRerank int
+}
+
+// QueryOption configures individual query executions.
+type QueryOption func(*QueryParams)
+
+// WithQueryFilter sets a metadata filter constraint for the query.
+func WithQueryFilter(filter map[string]any) QueryOption {
+	return func(p *QueryParams) {
+		p.Filter = filter
+	}
+}
+
+// WithQueryTopKRecall overrides topKRecall for this specific query.
+func WithQueryTopKRecall(k int) QueryOption {
+	return func(p *QueryParams) {
+		if k > 0 {
+			p.TopKRecall = k
+		}
+	}
+}
+
+// WithQueryTopNRerank overrides topNRerank for this specific query.
+func WithQueryTopNRerank(n int) QueryOption {
+	return func(p *QueryParams) {
+		if n > 0 {
+			p.TopNRerank = n
+		}
+	}
+}

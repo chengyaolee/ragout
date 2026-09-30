@@ -12,9 +12,9 @@ import (
 )
 
 // Query executes a synchronous end-to-end RAG query and returns the complete synthesized answer.
-func (e *Engine) Query(ctx context.Context, query string) (string, error) {
+func (e *Engine) Query(ctx context.Context, query string, opts ...QueryOption) (string, error) {
 	var b strings.Builder
-	for token, err := range e.QueryIter(ctx, query) {
+	for token, err := range e.QueryIter(ctx, query, opts...) {
 		if err != nil {
 			return "", err
 		}
@@ -24,11 +24,11 @@ func (e *Engine) Query(ctx context.Context, query string) (string, error) {
 }
 
 // QueryStream pushes generated tokens to the provided StreamCallback.
-func (e *Engine) QueryStream(ctx context.Context, query string, cb StreamCallback) error {
+func (e *Engine) QueryStream(ctx context.Context, query string, cb StreamCallback, opts ...QueryOption) error {
 	if cb == nil {
 		return ErrNilCallback
 	}
-	for token, err := range e.QueryIter(ctx, query) {
+	for token, err := range e.QueryIter(ctx, query, opts...) {
 		if err != nil {
 			return err
 		}
@@ -40,8 +40,16 @@ func (e *Engine) QueryStream(ctx context.Context, query string, cb StreamCallbac
 }
 
 // QueryIter streams generated tokens using modern Go 1.23+ range-over-func iterators.
-func (e *Engine) QueryIter(ctx context.Context, query string) iter.Seq2[string, error] {
+func (e *Engine) QueryIter(ctx context.Context, query string, opts ...QueryOption) iter.Seq2[string, error] {
 	return func(yield func(string, error) bool) {
+		params := QueryParams{
+			TopKRecall: e.topKRecall,
+			TopNRerank: e.topNRerank,
+		}
+		for _, opt := range opts {
+			opt(&params)
+		}
+
 		ctx, end := e.traceQuery(ctx, query)
 		var queryErr error
 		defer func() { end(queryErr) }()
@@ -62,7 +70,7 @@ func (e *Engine) QueryIter(ctx context.Context, query string) iter.Seq2[string, 
 			return
 		}
 
-		candidates, err := e.retrieveCandidates(ctx, query)
+		candidates, err := e.retrieveCandidates(ctx, query, params)
 		if err != nil {
 			queryErr = err
 			yield("", queryErr)
@@ -106,7 +114,7 @@ func (e *Engine) QueryIter(ctx context.Context, query string) iter.Seq2[string, 
 }
 
 // retrieveCandidates executes fan-out parallel retrieval, RRF fusion, and quality reranking.
-func (e *Engine) retrieveCandidates(ctx context.Context, query string) (candidates []ScoredChunk, err error) {
+func (e *Engine) retrieveCandidates(ctx context.Context, query string, params QueryParams) (candidates []ScoredChunk, err error) {
 	var denseResults, sparseResults []ScoredChunk
 
 	retrCtx, retrSpan := startSpan(ctx, "query.retrieval")
@@ -135,9 +143,9 @@ func (e *Engine) retrieveCandidates(ctx context.Context, query string) (candidat
 
 			denseStart := time.Now()
 			_, denseSpan := startSpan(searchCtx, "query.dense_search",
-				attribute.Int("top_k", e.topKRecall),
+				attribute.Int("top_k", params.TopKRecall),
 			)
-			res, denseErr := e.vStore.SearchDense(searchCtx, vecs[0], e.topKRecall, nil)
+			res, denseErr := e.vStore.SearchDense(searchCtx, vecs[0], params.TopKRecall, params.Filter)
 			QueryDuration.WithLabelValues("dense").Observe(time.Since(denseStart).Seconds())
 			if denseErr != nil {
 				endSpan(denseSpan, denseErr)
@@ -154,7 +162,7 @@ func (e *Engine) retrieveCandidates(ctx context.Context, query string) (candidat
 		g.Go(func() error {
 			sparseStart := time.Now()
 			_, sparseSpan := startSpan(searchCtx, "query.sparse_search")
-			res, sparseErr := e.iStore.SearchSparse(searchCtx, query, e.topKRecall, nil)
+			res, sparseErr := e.iStore.SearchSparse(searchCtx, query, params.TopKRecall, params.Filter)
 			QueryDuration.WithLabelValues("sparse").Observe(time.Since(sparseStart).Seconds())
 			if sparseErr != nil {
 				endSpan(sparseSpan, sparseErr)
@@ -181,7 +189,7 @@ func (e *Engine) retrieveCandidates(ctx context.Context, query string) (candidat
 		_, fuseSpan := startSpan(ctx, "query.rrf_fusion",
 			attribute.Int("rrf_k", e.rrfK),
 		)
-		candidates = ReciprocalRankFusion(denseResults, sparseResults, e.topKRecall, e.rrfK)
+		candidates = ReciprocalRankFusion(denseResults, sparseResults, params.TopKRecall, e.rrfK)
 		fuseSpan.SetAttributes(attribute.Int("fused_count", len(candidates)))
 		endSpan(fuseSpan, nil)
 		QueryDuration.WithLabelValues("fusion").Observe(time.Since(fuseStart).Seconds())
@@ -197,10 +205,10 @@ func (e *Engine) retrieveCandidates(ctx context.Context, query string) (candidat
 		rrStart := time.Now()
 		_, rrSpan := startSpan(ctx, "query.reranker",
 			attribute.String("reranker_type", fmt.Sprintf("%T", e.reranker)),
-			attribute.Int("top_n", e.topNRerank),
+			attribute.Int("top_n", params.TopNRerank),
 		)
 		var ranked []ScoredChunk
-		ranked, err = e.reranker.Rerank(ctx, query, candidates, e.topNRerank)
+		ranked, err = e.reranker.Rerank(ctx, query, candidates, params.TopNRerank)
 		QueryDuration.WithLabelValues("rerank").Observe(time.Since(rrStart).Seconds())
 		endSpan(rrSpan, err)
 		if err != nil {
@@ -213,8 +221,8 @@ func (e *Engine) retrieveCandidates(ctx context.Context, query string) (candidat
 		return ranked, nil
 	}
 
-	if len(candidates) > e.topNRerank {
-		candidates = candidates[:e.topNRerank]
+	if len(candidates) > params.TopNRerank {
+		candidates = candidates[:params.TopNRerank]
 	}
 	return candidates, nil
 }

@@ -299,3 +299,38 @@ func settledGoroutines() int {
 	}
 	return n
 }
+
+func TestEngine_QueryWithFilter(t *testing.T) {
+	ctx := context.Background()
+	e, _, _, _ := testEngine(t, true, true, false)
+
+	// Ingest two documents with different metadata
+	docEng := "Engineering teams use distributed consensus algorithms like Raft."
+	docMkt := "Marketing teams focus on customer acquisition campaigns and branding."
+
+	if err := e.Ingest(ctx, strings.NewReader(docEng), map[string]any{"department": "engineering"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Ingest(ctx, strings.NewReader(docMkt), map[string]any{"department": "marketing"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Query with engineering filter
+	gotEng, err := e.Query(ctx, "teams", ragout.WithQueryFilter(map[string]any{"department": "engineering"}))
+	if err != nil {
+		t.Fatalf("Query with engineering filter failed: %v", err)
+	}
+	if strings.Contains(gotEng, "Marketing") {
+		t.Fatalf("expected only engineering results, got %s", gotEng)
+	}
+
+	// Query with marketing filter
+	gotMkt, err := e.Query(ctx, "teams", ragout.WithQueryFilter(map[string]any{"department": "marketing"}))
+	if err != nil {
+		t.Fatalf("Query with marketing filter failed: %v", err)
+	}
+	if strings.Contains(gotMkt, "Engineering") {
+		t.Fatalf("expected only marketing results, got %s", gotMkt)
+	}
+}
+
