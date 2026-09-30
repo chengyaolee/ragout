@@ -1,7 +1,5 @@
 package ragout
 
-import "sort"
-
 // ReciprocalRankFusion combines two ranked lists of ScoredChunk (dense and sparse) using reciprocal rank fusion.
 // dense and sparse are ranked best-first. topK is the number of results to return.
 // k is the smoothing constant (values <= 0 use 60).
@@ -39,13 +37,7 @@ func ReciprocalRankFusion(dense []ScoredChunk, sparse []ScoredChunk, topK int, k
 		results = append(results, chunk)
 	}
 
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
-	})
-
-	if topK > len(results) {
-		topK = len(results)
-	}
-	*ptr = results[:topK]
+	top := SelectTopK(results, topK)
+	*ptr = top
 	return *ptr
 }

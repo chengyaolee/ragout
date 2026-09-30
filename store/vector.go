@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"math"
-	"sort"
 	"sync"
 
 	"github.com/chengyaolee/ragout"
@@ -91,16 +90,8 @@ func (vs *VectorStore) SearchDense(ctx context.Context, queryVector []float32, t
 		})
 	}
 
-	// Sort results descending by score
-	sort.Slice(scored, func(i, j int) bool {
-		return scored[i].Score > scored[j].Score
-	})
-
-	if topK > len(scored) {
-		topK = len(scored)
-	}
-
-	*ptr = scored[:topK]
+	top := ragout.SelectTopK(scored, topK)
+	*ptr = top
 	release = false
 	return *ptr, nil
 }
