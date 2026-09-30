@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"math"
 	"sort"
 	"sync"
 
@@ -104,15 +105,30 @@ func (vs *VectorStore) SearchDense(ctx context.Context, queryVector []float32, t
 	return *ptr, nil
 }
 
-// CosineSimilarity computes the dot product between two normalized float32 vectors.
+// CosineSimilarity computes the true cosine similarity between two float32 vectors.
+// If the vectors are already normalized (L2 norm = 1.0), it computes dot product directly.
+// Otherwise, it normalizes by the product of their L2 norms.
 func CosineSimilarity(a, b []float32) (float64, error) {
 	if len(a) != len(b) {
 		return 0.0, ragout.ErrDimensionMismatch
 	}
 
-	var dotProduct float64
+	var dotProduct, normA, normB float64
 	for i := range a {
-		dotProduct += float64(a[i]) * float64(b[i])
+		ai := float64(a[i])
+		bi := float64(b[i])
+		dotProduct += ai * bi
+		normA += ai * ai
+		normB += bi * bi
 	}
-	return dotProduct, nil
+
+	if normA == 0 || normB == 0 {
+		return 0.0, nil
+	}
+
+	if math.Abs(normA-1.0) < 1e-4 && math.Abs(normB-1.0) < 1e-4 {
+		return dotProduct, nil
+	}
+
+	return dotProduct / (math.Sqrt(normA) * math.Sqrt(normB)), nil
 }
