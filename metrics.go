@@ -1,6 +1,10 @@
 package ragout
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"errors"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 var (
 	QueryDuration = prometheus.NewHistogramVec(
@@ -19,6 +23,24 @@ var (
 	)
 )
 
+// RegisterMetrics registers ragout metrics into the given Prometheus registerer.
+// If a metric is already registered, the AlreadyRegisteredError is safely ignored.
+func RegisterMetrics(reg prometheus.Registerer) error {
+	if reg == nil {
+		reg = prometheus.DefaultRegisterer
+	}
+	collectors := []prometheus.Collector{QueryDuration, IngestedChunksTotal}
+	for _, c := range collectors {
+		if err := reg.Register(c); err != nil {
+			var alreadyRegistered prometheus.AlreadyRegisteredError
+			if !errors.As(err, &alreadyRegistered) {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func init() {
-	prometheus.MustRegister(QueryDuration, IngestedChunksTotal)
+	_ = RegisterMetrics(prometheus.DefaultRegisterer)
 }
