@@ -19,16 +19,41 @@ type OllamaGenerator struct {
 	budgeter   *ContextBudgeter
 }
 
-func NewOllamaGenerator(model string, endpoint string) *OllamaGenerator {
+type OllamaOption func(*OllamaGenerator)
+
+func WithOllamaHTTPClient(client *http.Client) OllamaOption {
+	return func(g *OllamaGenerator) {
+		if client != nil {
+			g.httpClient = client
+		}
+	}
+}
+
+func WithOllamaBudgeter(b *ContextBudgeter) OllamaOption {
+	return func(g *OllamaGenerator) {
+		if b != nil {
+			g.budgeter = b
+		}
+	}
+}
+
+func NewOllamaGenerator(model string, endpoint string, options ...OllamaOption) *OllamaGenerator {
 	if endpoint == "" {
 		endpoint = "http://localhost:11434/api/generate"
 	}
-	return &OllamaGenerator{
+	customTransport := http.DefaultTransport.(*http.Transport).Clone()
+	customTransport.ResponseHeaderTimeout = 30 * time.Second
+
+	g := &OllamaGenerator{
 		endpoint:   endpoint,
 		model:      model,
-		httpClient: &http.Client{Timeout: 120 * time.Second},
+		httpClient: &http.Client{Transport: customTransport},
 		budgeter:   NewContextBudgeter(nil, 4096),
 	}
+	for _, opt := range options {
+		opt(g)
+	}
+	return g
 }
 
 type ollamaStreamResponse struct {

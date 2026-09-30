@@ -1,26 +1,42 @@
 package generator
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/chengyaolee/ragout"
 )
 
-func TestOllamaGenerateIter(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("{\"model\":\"llama3\",\"response\":\"Hello\",\"done\":false}\n"))
-		w.Write([]byte("{\"model\":\"llama3\",\"response\":\" world\",\"done\":false}\n"))
-		w.Write([]byte("{\"model\":\"llama3\",\"response\":\"\",\"done\":true}\n"))
-	}))
-	defer srv.Close()
+type trackingCloser struct {
+	io.Reader
+	onClose func()
+}
 
-	g := NewOllamaGenerator("llama3", srv.URL)
+func (t *trackingCloser) Close() error {
+	if t.onClose != nil {
+		t.onClose()
+	}
+	return nil
+}
+
+func TestOllamaGenerateIter(t *testing.T) {
+	mockClient := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) *http.Response {
+			stream := "{\"model\":\"llama3\",\"response\":\"Hello\",\"done\":false}\n" +
+				"{\"model\":\"llama3\",\"response\":\" world\",\"done\":false}\n" +
+				"{\"model\":\"llama3\",\"response\":\"\",\"done\":true}\n"
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(bytes.NewBufferString(stream)),
+			}
+		}),
+	}
+
+	g := NewOllamaGenerator("llama3", "", WithOllamaHTTPClient(mockClient))
 	var b strings.Builder
 	for token, err := range g.GenerateIter(context.Background(), "hi", []ragout.ScoredChunk{
 		{Chunk: ragout.Chunk{ID: "a", Content: "fact"}},
@@ -37,20 +53,23 @@ func TestOllamaGenerateIter(t *testing.T) {
 
 func TestOllamaGenerateIter_BreakClosesBody(t *testing.T) {
 	closed := make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.Copy(io.Discard, r.Body)
-		flusher := w.(http.Flusher)
-		w.Write([]byte("{\"response\":\"Hello\",\"done\":false}\n"))
-		flusher.Flush()
-		select {
-		case <-r.Context().Done():
-			close(closed)
-		case <-time.After(5 * time.Second):
-		}
-	}))
-	defer srv.Close()
+	mockClient := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) *http.Response {
+			stream := "{\"response\":\"Hello\",\"done\":false}\n" +
+				"{\"response\":\" world\",\"done\":false}\n"
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: &trackingCloser{
+					Reader: strings.NewReader(stream),
+					onClose: func() {
+						close(closed)
+					},
+				},
+			}
+		}),
+	}
 
-	g := NewOllamaGenerator("llama3", srv.URL)
+	g := NewOllamaGenerator("llama3", "", WithOllamaHTTPClient(mockClient))
 	for token, err := range g.GenerateIter(context.Background(), "hi", nil) {
 		if err != nil {
 			t.Fatal(err)
@@ -62,7 +81,7 @@ func TestOllamaGenerateIter_BreakClosesBody(t *testing.T) {
 
 	select {
 	case <-closed:
-	case <-time.After(2 * time.Second):
-		t.Fatal("break did not close the response body")
+	default:
+		t.Fatal("expected response body to be closed on break")
 	}
 }

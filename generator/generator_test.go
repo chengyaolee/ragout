@@ -1,10 +1,10 @@
 package generator
 
 import (
+	"bytes"
 	"context"
-	"fmt"
+	"io"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/chengyaolee/ragout"
@@ -15,19 +15,32 @@ var (
 	_ ragout.Generator = (*OllamaGenerator)(nil)
 )
 
-func TestOpenAIGenerateIter(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer test-key" {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"The\"}}]}\n\n")
-		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\" answer\"}}]}\n\n")
-		fmt.Fprint(w, "data: [DONE]\n\n")
-	}))
-	defer srv.Close()
+type roundTripFunc func(req *http.Request) *http.Response
 
-	g := NewOpenAIGenerator("test-key", WithOpenAIEndpoint(srv.URL))
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req), nil
+}
+
+func TestOpenAIGenerateIter(t *testing.T) {
+	mockClient := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) *http.Response {
+			if req.Header.Get("Authorization") != "Bearer test-key" {
+				return &http.Response{
+					StatusCode: http.StatusUnauthorized,
+					Body:       io.NopCloser(bytes.NewBufferString("unauthorized")),
+				}
+			}
+			sse := "data: {\"choices\":[{\"delta\":{\"content\":\"The\"}}]}\n\n" +
+				"data: {\"choices\":[{\"delta\":{\"content\":\" answer\"}}]}\n\n" +
+				"data: [DONE]\n\n"
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(bytes.NewBufferString(sse)),
+			}
+		}),
+	}
+
+	g := NewOpenAIGenerator("test-key", WithOpenAIHTTPClient(mockClient))
 	got, err := g.Generate(context.Background(), "q", nil)
 	if err != nil {
 		t.Fatal(err)

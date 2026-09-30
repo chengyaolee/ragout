@@ -36,12 +36,23 @@ func WithOpenAIBudgeter(b *ContextBudgeter) OpenAIOption {
 	return func(g *OpenAIGenerator) { g.budgeter = b }
 }
 
+func WithOpenAIHTTPClient(client *http.Client) OpenAIOption {
+	return func(g *OpenAIGenerator) {
+		if client != nil {
+			g.httpClient = client
+		}
+	}
+}
+
 func NewOpenAIGenerator(apiKey string, options ...OpenAIOption) *OpenAIGenerator {
+	customTransport := http.DefaultTransport.(*http.Transport).Clone()
+	customTransport.ResponseHeaderTimeout = 30 * time.Second
+
 	g := &OpenAIGenerator{
 		apiKey:     apiKey,
 		model:      "gpt-4o-mini",
 		endpoint:   "https://api.openai.com/v1/chat/completions",
-		httpClient: &http.Client{Timeout: 60 * time.Second},
+		httpClient: &http.Client{Transport: customTransport},
 		budgeter:   NewContextBudgeter(nil, 4096),
 	}
 	for _, opt := range options {
