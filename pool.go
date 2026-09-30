@@ -17,7 +17,10 @@ func acquireCandidateSlice() *[]ScoredChunk {
 }
 
 func releaseCandidateSlice(ptr *[]ScoredChunk) {
-	if cap(*ptr) <= 128 { // Avoid retaining abnormally bloated slices
+	if ptr == nil {
+		return
+	}
+	if cap(*ptr) <= 1024 { // Retain buffers up to 1024 chunks for production workloads
 		clear((*ptr)[:cap(*ptr)])
 		*ptr = (*ptr)[:0]
 		scoredChunkPool.Put(ptr)
@@ -30,14 +33,15 @@ func AcquireCandidateSlice() *[]ScoredChunk { return acquireCandidateSlice() }
 // ReleaseCandidateSlice returns a buffer from AcquireCandidateSlice.
 func ReleaseCandidateSlice(ptr *[]ScoredChunk) { releaseCandidateSlice(ptr) }
 
-// releaseCandidates puts a returned candidate slice back in the pool.
-// ponytail: &buf is a fresh header each call; the backing array is what is reused. Cap above 128 is dropped. Upgrade path: hand the *[]ScoredChunk through VectorStore if the header alloc shows up in profiles.
+// releaseCandidates puts a returned candidate slice back in the pool without stack-escaping allocations.
 func releaseCandidates(s []ScoredChunk) {
-	if cap(s) == 0 || cap(s) > 128 {
+	if cap(s) == 0 || cap(s) > 1024 {
 		return
 	}
-	buf := s[:0]
-	releaseCandidateSlice(&buf)
+	ptr := scoredChunkPool.Get().(*[]ScoredChunk)
+	clear(s[:cap(s)])
+	*ptr = s[:0]
+	scoredChunkPool.Put(ptr)
 }
 
 func sameBacking(a, b []ScoredChunk) bool {
