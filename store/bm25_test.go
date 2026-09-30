@@ -227,3 +227,21 @@ func TestBM25Index_EdgeCases(t *testing.T) {
 		}
 	})
 }
+
+func TestBM25Index_TermsMatched(t *testing.T) {
+	idx := store.NewBM25Index()
+	if err := idx.Index(context.Background(), []ragout.Chunk{
+		{ID: "1", Content: "The quick brown fox"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := idx.TermsMatched("quick fox missing"); got != 2 {
+		t.Fatalf("TermsMatched = %d, want 2", got)
+	}
+	if got := idx.TermsMatched("quick quick"); got != 1 {
+		t.Fatalf("duplicate term count = %d, want 1", got)
+	}
+	if got := idx.TermsMatched("zzzz"); got != 0 {
+		t.Fatalf("missing term count = %d, want 0", got)
+	}
+}

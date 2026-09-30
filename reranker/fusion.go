@@ -21,47 +21,7 @@ import (
 //
 //	A slice of ScoredChunk representing the fused ranking.
 func ReciprocalRankFusion(dense []ragout.ScoredChunk, sparse []ragout.ScoredChunk, topK int, k int) []ragout.ScoredChunk {
-	if topK <= 0 {
-		return []ragout.ScoredChunk{}
-	}
-	if k <= 0 {
-		k = 60
-	}
-
-	// Assumption: Input is sorted in descending order of score
-	rrfScores := make(map[string]ragout.ScoredChunk)
-
-	for i, chunk := range dense {
-		updated := rrfScores[chunk.Chunk.ID]
-		updated.Chunk = chunk.Chunk
-		updated.DenseScore = chunk.DenseScore
-		updated.Score += 1.0 / float64(k+i+1)
-		rrfScores[chunk.Chunk.ID] = updated
-	}
-	for i, chunk := range sparse {
-		updated := rrfScores[chunk.Chunk.ID]
-		updated.Chunk = chunk.Chunk
-		updated.SparseScore = chunk.SparseScore
-		updated.Score += 1.0 / float64(k+i+1)
-		rrfScores[chunk.Chunk.ID] = updated
-	}
-
-	// Convert map to slice
-	results := make([]ragout.ScoredChunk, 0, len(rrfScores))
-	for _, chunk := range rrfScores {
-		results = append(results, chunk)
-	}
-
-	// Sort results in descending order of score
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
-	})
-
-	if topK > len(results) {
-		topK = len(results)
-	}
-
-	return results[:topK]
+	return ragout.ReciprocalRankFusion(dense, sparse, topK, k)
 }
 
 // Score-based Fusion

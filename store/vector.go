@@ -63,7 +63,16 @@ func (vs *VectorStore) SearchDense(ctx context.Context, queryVector []float32, t
 	vs.mu.RLock()
 	defer vs.mu.RUnlock()
 
-	scoredResults := make([]ragout.ScoredChunk, 0, len(vs.chunks))
+	ptr := ragout.AcquireCandidateSlice()
+	scored := (*ptr)[:0]
+	release := true
+	defer func() {
+		if release {
+			*ptr = scored
+			ragout.ReleaseCandidateSlice(ptr)
+		}
+	}()
+
 	for _, chunk := range vs.chunks {
 		if !matches(chunk.Metadata, filter) {
 			continue
@@ -74,7 +83,7 @@ func (vs *VectorStore) SearchDense(ctx context.Context, queryVector []float32, t
 			return nil, err
 		}
 
-		scoredResults = append(scoredResults, ragout.ScoredChunk{
+		scored = append(scored, ragout.ScoredChunk{
 			Chunk:      chunk,
 			DenseScore: sim,
 			Score:      sim,
@@ -82,15 +91,17 @@ func (vs *VectorStore) SearchDense(ctx context.Context, queryVector []float32, t
 	}
 
 	// Sort results descending by score
-	sort.Slice(scoredResults, func(i, j int) bool {
-		return scoredResults[i].Score > scoredResults[j].Score
+	sort.Slice(scored, func(i, j int) bool {
+		return scored[i].Score > scored[j].Score
 	})
 
-	if topK > len(scoredResults) {
-		topK = len(scoredResults)
+	if topK > len(scored) {
+		topK = len(scored)
 	}
 
-	return scoredResults[:topK], nil
+	*ptr = scored[:topK]
+	release = false
+	return *ptr, nil
 }
 
 // CosineSimilarity computes the dot product between two normalized float32 vectors.

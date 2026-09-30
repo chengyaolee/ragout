@@ -12,14 +12,14 @@ import (
 )
 
 type RateLimiter struct {
-	inner   Embedder
+	inner   ragout.Embedder
 	limit   *rate.Limiter
 	attemps int
 	base    time.Duration
 	max     time.Duration
 }
 
-func NewRateLimiter(inner Embedder, limit *rate.Limiter, attemps int, base time.Duration, max time.Duration) (*RateLimiter, error) {
+func NewRateLimiter(inner ragout.Embedder, limit *rate.Limiter, attemps int, base time.Duration, max time.Duration) (*RateLimiter, error) {
 	if inner == nil {
 		return nil, fmt.Errorf("inner embedder is nil")
 	}

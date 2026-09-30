@@ -212,7 +212,8 @@ func (idx *BM25Index) SearchSparse(ctx context.Context, query string, topK int, 
 		}
 	}
 
-	scored := make([]ragout.ScoredChunk, 0, len(scores))
+	ptr := ragout.AcquireCandidateSlice()
+	scored := (*ptr)[:0]
 	for id, score := range scores {
 		chunk := idx.chunks[id]
 		if !matches(chunk.Metadata, filter) {
@@ -234,5 +235,26 @@ func (idx *BM25Index) SearchSparse(ctx context.Context, query string, topK int, 
 		topK = len(scored)
 	}
 
-	return scored[:topK], nil
+	*ptr = scored[:topK]
+	return *ptr, nil
+}
+
+// TermsMatched counts unique query terms present in the index.
+func (idx *BM25Index) TermsMatched(query string) int {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+
+	tokens := idx.tokenize(query)
+	seen := make(map[string]struct{}, len(tokens))
+	n := 0
+	for _, token := range tokens {
+		if _, ok := seen[token]; ok {
+			continue
+		}
+		seen[token] = struct{}{}
+		if len(idx.index[token]) > 0 {
+			n++
+		}
+	}
+	return n
 }
