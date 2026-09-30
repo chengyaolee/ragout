@@ -95,8 +95,22 @@ func (c *CharacterChunker) splitText(ctx context.Context, text string, separator
 				}
 				outputChunks = append(outputChunks, recursiveSplits...)
 			} else {
-				// No more separators
-				outputChunks = append(outputChunks, split[:c.chunkSize])
+				// No more separators: chunk by rune sliding window so no trailing text is lost
+				runes := []rune(split)
+				step := c.chunkSize - c.chunkOverlap
+				if step <= 0 {
+					step = 1
+				}
+				for start := 0; start < len(runes); start += step {
+					end := start + c.chunkSize
+					if end > len(runes) {
+						end = len(runes)
+					}
+					outputChunks = append(outputChunks, string(runes[start:end]))
+					if end == len(runes) {
+						break
+					}
+				}
 			}
 		}
 	}
