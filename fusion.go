@@ -25,7 +25,9 @@ func ReciprocalRankFusion(dense []ScoredChunk, sparse []ScoredChunk, topK int, k
 	}
 	for i, chunk := range sparse {
 		updated := rrfScores[chunk.Chunk.ID]
-		updated.Chunk = chunk.Chunk
+		if len(chunk.Chunk.Embedding) > 0 || len(updated.Chunk.Embedding) == 0 {
+			updated.Chunk = chunk.Chunk
+		}
 		updated.SparseScore = chunk.SparseScore
 		updated.Score += 1.0 / float64(k+i+1)
 		rrfScores[chunk.Chunk.ID] = updated
