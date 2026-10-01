@@ -106,21 +106,8 @@ func (idx *BM25Index) Index(ctx context.Context, chunks []ragout.Chunk) error {
 		}
 
 		// Handle updates: remove old statistics and postings if chunk already exists
-		if oldLen, exists := idx.documentLengths[chunk.ID]; exists {
-			idx.totalTokens -= oldLen
-			for term, postings := range idx.index {
-				newPostings := make([]Posting, 0, len(postings))
-				for _, p := range postings {
-					if p.ChunkID != chunk.ID {
-						newPostings = append(newPostings, p)
-					}
-				}
-				if len(newPostings) == 0 {
-					delete(idx.index, term)
-				} else {
-					idx.index[term] = newPostings
-				}
-			}
+		if _, exists := idx.documentLengths[chunk.ID]; exists {
+			idx.removeLocked(chunk.ID)
 		} else {
 			idx.totalDocuments++
 		}
@@ -152,6 +139,58 @@ func (idx *BM25Index) Index(ctx context.Context, chunks []ragout.Chunk) error {
 			Embedding:  chunk.Embedding,
 			Metadata:   ragout.CloneMetadata(chunk.Metadata),
 		}
+	}
+
+	if idx.totalDocuments > 0 {
+		idx.averageDocumentLength = float64(idx.totalTokens) / float64(idx.totalDocuments)
+	} else {
+		idx.averageDocumentLength = 0
+	}
+
+	return nil
+}
+
+// removeLocked strips a chunk's postings and token statistics from the index, leaving
+// totalDocuments untouched: Index re-adds the chunk right after calling this, while
+// Delete decrements totalDocuments itself. Callers must hold idx.mu.
+func (idx *BM25Index) removeLocked(id string) {
+	oldLen, exists := idx.documentLengths[id]
+	if !exists {
+		return
+	}
+	idx.totalTokens -= oldLen
+	for term, postings := range idx.index {
+		newPostings := make([]Posting, 0, len(postings))
+		for _, p := range postings {
+			if p.ChunkID != id {
+				newPostings = append(newPostings, p)
+			}
+		}
+		if len(newPostings) == 0 {
+			delete(idx.index, term)
+		} else {
+			idx.index[term] = newPostings
+		}
+	}
+	delete(idx.documentLengths, id)
+	delete(idx.chunks, id)
+}
+
+// Delete removes chunks from the index by ID. Unknown IDs are ignored.
+func (idx *BM25Index) Delete(ctx context.Context, ids []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+
+	for _, id := range ids {
+		if _, exists := idx.documentLengths[id]; !exists {
+			continue
+		}
+		idx.removeLocked(id)
+		idx.totalDocuments--
 	}
 
 	if idx.totalDocuments > 0 {

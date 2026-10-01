@@ -51,6 +51,22 @@ func (vs *VectorStore) Upsert(ctx context.Context, chunks []ragout.Chunk) error 
 	return nil
 }
 
+// Delete removes chunks from the vector store by ID. Unknown IDs are ignored.
+func (vs *VectorStore) Delete(ctx context.Context, ids []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	vs.mu.Lock()
+	defer vs.mu.Unlock()
+
+	for _, id := range ids {
+		delete(vs.chunks, id)
+	}
+
+	return nil
+}
+
 // SearchDense searches for the topK most similar chunks to queryVector using cosine similarity.
 func (vs *VectorStore) SearchDense(ctx context.Context, queryVector []float32, topK int, filter map[string]any) ([]ragout.ScoredChunk, error) {
 	if err := ctx.Err(); err != nil {
