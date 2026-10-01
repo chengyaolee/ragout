@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/chengyaolee/ragout"
-	"github.com/google/uuid"
 )
 
 type TextReader struct {
@@ -25,7 +24,7 @@ func (tr *TextReader) Read(ctx context.Context, r io.Reader, metadata map[string
 		return nil, err
 	}
 
-	b, err := io.ReadAll(io.LimitReader(r, tr.maxBytes))
+	b, err := readLimited(r, tr.maxBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +38,6 @@ func (tr *TextReader) Read(ctx context.Context, r io.Reader, metadata map[string
 	}
 
 	return []ragout.Document{{
-		ID:       uuid.NewString(),
 		Content:  text,
 		Metadata: ragout.CloneMetadata(metadata),
 	}}, nil

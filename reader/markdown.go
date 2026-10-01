@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/chengyaolee/ragout"
-	"github.com/google/uuid"
 )
 
 // MarkdownReader reads markdown documents with optional frontmatter parsing.
@@ -29,7 +28,7 @@ func (mr *MarkdownReader) Read(ctx context.Context, r io.Reader, metadata map[st
 		return nil, err
 	}
 
-	b, err := io.ReadAll(io.LimitReader(r, mr.maxBytes))
+	b, err := readLimited(r, mr.maxBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +71,6 @@ func (mr *MarkdownReader) Read(ctx context.Context, r io.Reader, metadata map[st
 	}
 
 	return []ragout.Document{{
-		ID:       uuid.NewString(),
 		Content:  text,
 		Metadata: meta,
 	}}, nil

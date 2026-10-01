@@ -2,6 +2,7 @@ package reader_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -20,8 +21,8 @@ func TestTextReader_Success(t *testing.T) {
 	if len(docs) != 1 {
 		t.Fatalf("expected 1 document, got %d", len(docs))
 	}
-	if docs[0].ID == "" {
-		t.Error("expected document ID")
+	if docs[0].ID != "" {
+		t.Errorf("expected no document ID (Engine.Ingest derives it from source+content), got %q", docs[0].ID)
 	}
 	if docs[0].Content != "hello world" {
 		t.Errorf("content = %q, want %q", docs[0].Content, "hello world")
@@ -49,11 +50,11 @@ func TestTextReader_Empty(t *testing.T) {
 func TestTextReader_MaxBytesLimit(t *testing.T) {
 	tr := reader.NewTextReader(5)
 	docs, err := tr.Read(context.Background(), strings.NewReader("hello world"), nil)
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+	if !errors.Is(err, ragout.ErrDocumentTooLarge) {
+		t.Fatalf("expected ErrDocumentTooLarge, got %v", err)
 	}
-	if docs[0].Content != "hello" {
-		t.Errorf("content = %q, want truncated %q", docs[0].Content, "hello")
+	if docs != nil {
+		t.Errorf("expected nil documents, got %v", docs)
 	}
 }
 

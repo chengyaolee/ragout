@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/chengyaolee/ragout"
-	"github.com/google/uuid"
 )
 
 var (
@@ -37,7 +36,7 @@ func (hr *HTMLReader) Read(ctx context.Context, r io.Reader, metadata map[string
 		return nil, err
 	}
 
-	b, err := io.ReadAll(io.LimitReader(r, hr.maxBytes))
+	b, err := readLimited(r, hr.maxBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +61,6 @@ func (hr *HTMLReader) Read(ctx context.Context, r io.Reader, metadata map[string
 	}
 
 	return []ragout.Document{{
-		ID:       uuid.NewString(),
 		Content:  clean,
 		Metadata: ragout.CloneMetadata(metadata),
 	}}, nil
