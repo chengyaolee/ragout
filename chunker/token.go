@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 	"github.com/chengyaolee/ragout"
-	"github.com/google/uuid"
 	"github.com/pkoukk/tiktoken-go"
 )
 
 type TokenChunker struct {
-	chunkSize int
+	chunkSize    int
 	chunkOverlap int
-	encoder *tiktoken.Tiktoken
+	encoder      *tiktoken.Tiktoken
 }
 
 func NewTokenChunker(chunkSize int, chunkOverlap int, encodingName string) (*TokenChunker, error) {
@@ -29,9 +28,9 @@ func NewTokenChunker(chunkSize int, chunkOverlap int, encodingName string) (*Tok
 		return nil, fmt.Errorf("failed to get encoding, check encoding name: %w", err)
 	}
 	return &TokenChunker{
-		chunkSize: chunkSize,
+		chunkSize:    chunkSize,
 		chunkOverlap: chunkOverlap,
-		encoder: encoder,
+		encoder:      encoder,
 	}, nil
 }
 
@@ -47,18 +46,18 @@ func (tc *TokenChunker) Chunk(ctx context.Context, doc ragout.Document) ([]ragou
 
 	// Step ensures overlap
 	step := tc.chunkSize - tc.chunkOverlap
-	
+
 	chunks := []ragout.Chunk{}
 
-	for i := 0; i< len(tokens); i+= step {
-		end := min(i + tc.chunkSize, len(tokens))
+	for i := 0; i < len(tokens); i += step {
+		end := min(i+tc.chunkSize, len(tokens))
 		chunk := tokens[i:end]
 		chunks = append(chunks, ragout.Chunk{
-			ID: uuid.New().String(),
+			ID:         ragout.ChunkID(doc.ID, i),
 			DocumentID: doc.ID,
-			Index: i,
-			Content: tc.encoder.Decode(chunk),
-			Metadata: ragout.CloneMetadata(doc.Metadata),
+			Index:      i,
+			Content:    tc.encoder.Decode(chunk),
+			Metadata:   ragout.CloneMetadata(doc.Metadata),
 		})
 		if end == len(tokens) {
 			break
@@ -66,5 +65,3 @@ func (tc *TokenChunker) Chunk(ctx context.Context, doc ragout.Document) ([]ragou
 	}
 	return chunks, nil
 }
-
-

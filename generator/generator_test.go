@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/chengyaolee/ragout"
@@ -41,11 +42,15 @@ func TestOpenAIGenerateIter(t *testing.T) {
 	}
 
 	g := NewOpenAIGenerator("test-key", WithOpenAIHTTPClient(mockClient))
-	got, err := g.Generate(context.Background(), "q", nil)
-	if err != nil {
-		t.Fatal(err)
+	_, tokens := g.GenerateIter(context.Background(), "q", nil)
+	var got strings.Builder
+	for token, err := range tokens {
+		if err != nil {
+			t.Fatal(err)
+		}
+		got.WriteString(token)
 	}
-	if got != "The answer" {
-		t.Fatalf("got %q, want %q", got, "The answer")
+	if got.String() != "The answer" {
+		t.Fatalf("got %q, want %q", got.String(), "The answer")
 	}
 }

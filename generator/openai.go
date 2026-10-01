@@ -80,21 +80,18 @@ type openAIStreamChunk struct {
 	} `json:"choices"`
 }
 
-// GenerateIter streams response tokens using modern Go iter.Seq2.
-func (g *OpenAIGenerator) GenerateIter(ctx context.Context, query string, candidates []ragout.ScoredChunk) iter.Seq2[string, error] {
-	return func(yield func(string, error) bool) {
+// GenerateIter assembles the prompt (returning the chunks placed in it, in citation
+// order) and streams response tokens using modern Go iter.Seq2.
+func (g *OpenAIGenerator) GenerateIter(ctx context.Context, query string, candidates []ragout.ScoredChunk) ([]ragout.ScoredChunk, iter.Seq2[string, error]) {
+	prompt, sources := g.budgeter.BuildPrompt("You are an accurate RAG assistant.", query, candidates)
+
+	return sources, func(yield func(string, error) bool) {
 		if err := ctx.Err(); err != nil {
 			yield("", err)
 			return
 		}
 
-		// 1. Reorder context to mitigate "lost in the middle"
-		reordered := ReorderLostInTheMiddle(candidates)
-
-		// 2. Assemble prompt within token budget
-		prompt, _ := g.budgeter.BuildPrompt("You are an accurate RAG assistant.", query, reordered)
-
-		// 3. Prepare payload with "stream": true
+		// Prepare payload with "stream": true
 		payload := openAIChatRequest{
 			Model: g.model,
 			Messages: []openAIChatMessage{
@@ -159,12 +156,4 @@ func (g *OpenAIGenerator) GenerateIter(ctx context.Context, query string, candid
 			yield("", fmt.Errorf("openai: sse stream read error: %w", err))
 		}
 	}
-}
-
-func (g *OpenAIGenerator) GenerateStream(ctx context.Context, query string, context []ragout.ScoredChunk, cb ragout.StreamCallback) error {
-	return StreamFromIter(g.GenerateIter(ctx, query, context), cb)
-}
-
-func (g *OpenAIGenerator) Generate(ctx context.Context, query string, context []ragout.ScoredChunk) (string, error) {
-	return CollectFromIter(g.GenerateIter(ctx, query, context))
 }

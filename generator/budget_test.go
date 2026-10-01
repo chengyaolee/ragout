@@ -47,6 +47,36 @@ func TestBudgeter_StrictCeiling(t *testing.T) {
 	}
 }
 
+// TestBudgeter_KeepsTopRankedWhenOverBudget guards against a prior bug where
+// BuildPrompt reordered candidates (moving rank #2 to the tail) before budgeting, and
+// AssembleContextWithBudget stopped at the first chunk that didn't fit. Under a tight
+// budget that combination dropped rank #2 in favor of rank #3. Selection must run in
+// relevance order (skipping, not stopping, at an oversized chunk); reordering happens
+// only after the budget has picked the chunks to keep.
+func TestBudgeter_KeepsTopRankedWhenOverBudget(t *testing.T) {
+	counter := byteCounter{}
+	ids := []string{"rank1", "rank2", "rank3", "rank4", "rank5"}
+	candidates := make([]ragout.ScoredChunk, len(ids))
+	for i, id := range ids {
+		candidates[i] = ragout.ScoredChunk{Chunk: ragout.Chunk{ID: id, Content: strings.Repeat("x", 20)}}
+	}
+
+	citationCost := func(id string) int {
+		return counter.CountTokens(fmt.Sprintf("[0] (ID: %s)\n%s\n\n", id, strings.Repeat("x", 20)))
+	}
+	budget := citationCost("rank1") + citationCost("rank2")
+
+	_, selected := NewContextBudgeter(counter, budget).AssembleContext(candidates)
+
+	got := make(map[string]bool, len(selected))
+	for _, sc := range selected {
+		got[sc.Chunk.ID] = true
+	}
+	if len(selected) != 2 || !got["rank1"] || !got["rank2"] {
+		t.Fatalf("selected = %v, want exactly {rank1, rank2}", got)
+	}
+}
+
 func TestBudgeter_LostInMiddleReordering(t *testing.T) {
 	ids := []string{"C1", "C2", "C3", "C4", "C5"}
 	in := make([]ragout.ScoredChunk, len(ids))

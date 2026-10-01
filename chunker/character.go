@@ -3,15 +3,14 @@ package chunker
 import (
 	"context"
 	"fmt"
-	"strings"
 	"github.com/chengyaolee/ragout"
-	"github.com/google/uuid"
+	"strings"
 )
 
 type CharacterChunker struct {
-	chunkSize int
+	chunkSize    int
 	chunkOverlap int
-	separators []string
+	separators   []string
 }
 
 func NewCharacterChunker(chunkSize int, chunkOverlap int, separators []string) (*CharacterChunker, error) {
@@ -37,7 +36,6 @@ func (c *CharacterChunker) Chunk(ctx context.Context, doc ragout.Document) ([]ra
 	if len(doc.Content) == 0 {
 		return nil, ragout.ErrEmptyDocument
 	}
-	
 
 	texts, err := c.splitText(ctx, doc.Content, c.separators)
 	if err != nil {
@@ -58,7 +56,7 @@ func (c *CharacterChunker) splitText(ctx context.Context, text string, separator
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	
+
 	var outputChunks []string
 
 	separator := separators[len(separators)-1]
@@ -72,7 +70,7 @@ func (c *CharacterChunker) splitText(ctx context.Context, text string, separator
 			break
 		}
 	}
-	
+
 	var splits []string
 	splits = strings.Split(text, separator)
 
@@ -122,7 +120,6 @@ func (c *CharacterChunker) splitText(ctx context.Context, text string, separator
 	return outputChunks, nil
 }
 
-
 func (c *CharacterChunker) merge(ctx context.Context, splits []string, separator string) []string {
 	chunks := []string{}
 	currentChunk := []string{}
@@ -145,7 +142,7 @@ func (c *CharacterChunker) merge(ctx context.Context, splits []string, separator
 			if len(currentChunk) > 0 {
 				chunks = append(chunks, strings.Join(currentChunk, separator))
 			}
-			
+
 			// Preserve overlap
 			for len(currentChunk) > 0 && currentLength > c.chunkOverlap {
 				removed := currentChunk[0]
@@ -176,10 +173,10 @@ func (c *CharacterChunker) merge(ctx context.Context, splits []string, separator
 
 func (c *CharacterChunker) stringToChunk(ctx context.Context, text string, document ragout.Document, index int) (ragout.Chunk, error) {
 	return ragout.Chunk{
-		ID: uuid.New().String(),
+		ID:         ragout.ChunkID(document.ID, index),
 		DocumentID: document.ID,
-		Index: index,
-		Content: text,
-		Metadata: ragout.CloneMetadata(document.Metadata),
+		Index:      index,
+		Content:    text,
+		Metadata:   ragout.CloneMetadata(document.Metadata),
 	}, nil
 }

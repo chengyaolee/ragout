@@ -38,9 +38,10 @@ func TestOllamaGenerateIter(t *testing.T) {
 
 	g := NewOllamaGenerator("llama3", "", WithOllamaHTTPClient(mockClient))
 	var b strings.Builder
-	for token, err := range g.GenerateIter(context.Background(), "hi", []ragout.ScoredChunk{
+	_, tokens := g.GenerateIter(context.Background(), "hi", []ragout.ScoredChunk{
 		{Chunk: ragout.Chunk{ID: "a", Content: "fact"}},
-	}) {
+	})
+	for token, err := range tokens {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -70,7 +71,8 @@ func TestOllamaGenerateIter_BreakClosesBody(t *testing.T) {
 	}
 
 	g := NewOllamaGenerator("llama3", "", WithOllamaHTTPClient(mockClient))
-	for token, err := range g.GenerateIter(context.Background(), "hi", nil) {
+	_, tokens := g.GenerateIter(context.Background(), "hi", nil)
+	for token, err := range tokens {
 		if err != nil {
 			t.Fatal(err)
 		}

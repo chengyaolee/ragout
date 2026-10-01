@@ -61,14 +61,14 @@ type ollamaStreamResponse struct {
 	Done     bool   `json:"done"`
 }
 
-func (og *OllamaGenerator) GenerateIter(ctx context.Context, query string, candidates []ragout.ScoredChunk) iter.Seq2[string, error] {
-	return func(yield func(string, error) bool) {
+func (og *OllamaGenerator) GenerateIter(ctx context.Context, query string, candidates []ragout.ScoredChunk) ([]ragout.ScoredChunk, iter.Seq2[string, error]) {
+	prompt, sources := og.budgeter.BuildPrompt("", query, candidates)
+
+	return sources, func(yield func(string, error) bool) {
 		if err := ctx.Err(); err != nil {
 			yield("", err)
 			return
 		}
-
-		prompt, _ := og.budgeter.BuildPrompt("", query, ReorderLostInTheMiddle(candidates))
 
 		payload := map[string]any{
 			"model":  og.model,
@@ -106,12 +106,4 @@ func (og *OllamaGenerator) GenerateIter(ctx context.Context, query string, candi
 			}
 		}
 	}
-}
-
-func (og *OllamaGenerator) GenerateStream(ctx context.Context, query string, context []ragout.ScoredChunk, cb ragout.StreamCallback) error {
-	return StreamFromIter(og.GenerateIter(ctx, query, context), cb)
-}
-
-func (og *OllamaGenerator) Generate(ctx context.Context, query string, context []ragout.ScoredChunk) (string, error) {
-	return CollectFromIter(og.GenerateIter(ctx, query, context))
 }
