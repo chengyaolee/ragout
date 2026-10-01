@@ -48,16 +48,16 @@ func TestEngine_EndToEndHybrid(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := e.Ingest(ctx, strings.NewReader(hybridFacts), nil); err != nil {
+	if err := e.Ingest(ctx, "hybrid.txt", strings.NewReader(hybridFacts), nil); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := e.Query(ctx, "How do channels prevent race conditions?")
+	answer, err := e.Query(ctx, "How do channels prevent race conditions?")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(got, answerText) {
-		t.Fatalf("answer = %q, want synthesized text %q", got, answerText)
+	if !strings.Contains(answer.Text, answerText) {
+		t.Fatalf("answer = %q, want synthesized text %q", answer.Text, answerText)
 	}
 
 	hits, err := idx.SearchSparse(ctx, "channels", 5, nil)
@@ -67,8 +67,22 @@ func TestEngine_EndToEndHybrid(t *testing.T) {
 	if len(hits) == 0 {
 		t.Fatal("ingest stored no chunks")
 	}
-	if !strings.Contains(got, hits[0].Chunk.ID) {
-		t.Fatalf("answer = %q, want ingested chunk %s", got, hits[0].Chunk.ID)
+	if !strings.Contains(answer.Text, hits[0].Chunk.ID) {
+		t.Fatalf("answer = %q, want ingested chunk %s", answer.Text, hits[0].Chunk.ID)
+	}
+
+	// Sources must point back at the chunks actually placed in the prompt, and carry
+	// the filename Ingest recorded.
+	if len(answer.Sources) == 0 {
+		t.Fatal("answer has no sources")
+	}
+	for _, src := range answer.Sources {
+		if src.Chunk.Metadata["source"] != "hybrid.txt" {
+			t.Fatalf("source chunk metadata[source] = %v, want %q", src.Chunk.Metadata["source"], "hybrid.txt")
+		}
+	}
+	if len(answer.Retrieved) < len(answer.Sources) {
+		t.Fatalf("retrieved %d chunks, fewer than %d sources", len(answer.Retrieved), len(answer.Sources))
 	}
 }
 
@@ -76,10 +90,10 @@ func TestEngine_GracefulDegradation(t *testing.T) {
 	t.Run("dense only", func(t *testing.T) {
 		ctx := context.Background()
 		e, emb, vs, _ := testEngine(t, true, false, false)
-		if err := e.Ingest(ctx, strings.NewReader(hybridFacts), nil); err != nil {
+		if err := e.Ingest(ctx, "hybrid.txt", strings.NewReader(hybridFacts), nil); err != nil {
 			t.Fatal(err)
 		}
-		got, err := e.Query(ctx, "How do channels prevent race conditions?")
+		answer, err := e.Query(ctx, "How do channels prevent race conditions?")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -91,18 +105,18 @@ func TestEngine_GracefulDegradation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(hits) == 0 || !strings.Contains(got, hits[0].Chunk.ID) {
-			t.Fatalf("dense answer = %q, hits = %v", got, hits)
+		if len(hits) == 0 || !strings.Contains(answer.Text, hits[0].Chunk.ID) {
+			t.Fatalf("dense answer = %q, hits = %v", answer.Text, hits)
 		}
 	})
 
 	t.Run("sparse only", func(t *testing.T) {
 		ctx := context.Background()
 		e, _, _, idx := testEngine(t, false, true, false)
-		if err := e.Ingest(ctx, strings.NewReader(hybridFacts), nil); err != nil {
+		if err := e.Ingest(ctx, "hybrid.txt", strings.NewReader(hybridFacts), nil); err != nil {
 			t.Fatal(err)
 		}
-		got, err := e.Query(ctx, "How do channels prevent race conditions?")
+		answer, err := e.Query(ctx, "How do channels prevent race conditions?")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -110,8 +124,8 @@ func TestEngine_GracefulDegradation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(hits) == 0 || !strings.Contains(got, hits[0].Chunk.ID) {
-			t.Fatalf("sparse answer = %q, hits = %v", got, hits)
+		if len(hits) == 0 || !strings.Contains(answer.Text, hits[0].Chunk.ID) {
+			t.Fatalf("sparse answer = %q, hits = %v", answer.Text, hits)
 		}
 	})
 
@@ -147,12 +161,12 @@ func TestEngine_GracefulDegradation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := e.Ingest(ctx, strings.NewReader(facts), nil); err != nil {
+		if err := e.Ingest(ctx, "facts.txt", strings.NewReader(facts), nil); err != nil {
 			t.Fatal(err)
 		}
 
 		query := "How do channels prevent race conditions?"
-		got, err := e.Query(ctx, query)
+		answer, err := e.Query(ctx, query)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -173,10 +187,10 @@ func TestEngine_GracefulDegradation(t *testing.T) {
 		if len(fused) > topN {
 			fused = fused[:topN]
 		}
-		rest := strings.TrimPrefix(got, answerText)
+		rest := strings.TrimPrefix(answer.Text, answerText)
 		for _, hit := range fused {
 			if !strings.HasPrefix(rest, hit.Chunk.ID) {
-				t.Fatalf("answer = %q, want RRF id %s next", got, hit.Chunk.ID)
+				t.Fatalf("answer = %q, want RRF id %s next", answer.Text, hit.Chunk.ID)
 			}
 			rest = rest[len(hit.Chunk.ID):]
 		}
@@ -190,13 +204,14 @@ func TestEngine_StreamIterBreak(t *testing.T) {
 	ctx := context.Background()
 	e, _, _, _ := testEngine(t, true, true, true)
 	doc := "This query explains how channels prevent race conditions."
-	if err := e.Ingest(ctx, strings.NewReader(doc), nil); err != nil {
+	if err := e.Ingest(ctx, "doc.txt", strings.NewReader(doc), nil); err != nil {
 		t.Fatal(err)
 	}
 
 	before := settledGoroutines()
 	n := 0
-	for token, err := range e.QueryIter(ctx, "query") {
+	_, tokens := e.QueryIter(ctx, "query")
+	for token, err := range tokens {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -221,7 +236,7 @@ func TestEngine_ContextCancellation(t *testing.T) {
 		e, _, _, _ := testEngine(t, true, true, true)
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		err := e.Ingest(ctx, strings.NewReader(hybridFacts), nil)
+		err := e.Ingest(ctx, "hybrid.txt", strings.NewReader(hybridFacts), nil)
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("Ingest err = %v, want context.Canceled", err)
 		}
@@ -251,6 +266,89 @@ func TestEngine_ValidationErrors(t *testing.T) {
 	_, err := e.Query(context.Background(), " \t\n ")
 	if !errors.Is(err, ragout.ErrEmptyQuery) {
 		t.Fatalf("Query err = %v, want ErrEmptyQuery", err)
+	}
+}
+
+// flakyIndexStore wraps a BM25Index but can be told to fail Index calls, to exercise
+// Ingest's rollback path.
+type flakyIndexStore struct {
+	inner     *store.BM25Index
+	failIndex bool
+}
+
+func (f *flakyIndexStore) Index(ctx context.Context, chunks []ragout.Chunk) error {
+	if f.failIndex {
+		return errors.New("flakyIndexStore: boom")
+	}
+	return f.inner.Index(ctx, chunks)
+}
+
+func (f *flakyIndexStore) SearchSparse(ctx context.Context, query string, topK int, filter map[string]any) ([]ragout.ScoredChunk, error) {
+	return f.inner.SearchSparse(ctx, query, topK, filter)
+}
+
+func (f *flakyIndexStore) Delete(ctx context.Context, ids []string) error {
+	return f.inner.Delete(ctx, ids)
+}
+
+func TestEngine_IngestRollback(t *testing.T) {
+	ctx := context.Background()
+	vs := store.NewVectorStore()
+	fIdx := &flakyIndexStore{inner: store.NewBM25Index(), failIndex: true}
+	emb, err := embedder.NewMockEmbedder(8, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch, err := chunker.NewCharacterChunker(200, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := ragout.NewEngine(
+		ragout.WithReader(reader.NewTextReader(1<<20)),
+		ragout.WithChunker(ch),
+		ragout.WithEmbedder(emb),
+		ragout.WithVectorStore(vs),
+		ragout.WithIndexStore(fIdx),
+		ragout.WithGenerator(generator.NewMockGenerator(nil)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	zeroVec := make([]float32, 8)
+	countVectorChunks := func() int {
+		hits, err := vs.SearchDense(ctx, zeroVec, 100, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(hits)
+	}
+
+	// IndexStore.Index fails after VectorStore.Upsert has already committed; the
+	// vector store must be rolled back rather than left half-indexed.
+	if err := e.Ingest(ctx, "doc.txt", strings.NewReader(hybridFacts), nil); err == nil {
+		t.Fatal("expected Ingest to fail")
+	}
+	if n := countVectorChunks(); n != 0 {
+		t.Fatalf("vector store has %d chunks after failed ingest, want 0 (rollback)", n)
+	}
+
+	// A retry with a healthy store succeeds, using the same deterministic chunk IDs.
+	fIdx.failIndex = false
+	if err := e.Ingest(ctx, "doc.txt", strings.NewReader(hybridFacts), nil); err != nil {
+		t.Fatalf("retry Ingest failed: %v", err)
+	}
+	first := countVectorChunks()
+	if first == 0 {
+		t.Fatal("retry Ingest stored no chunks")
+	}
+
+	// Re-ingesting the same source+content must not duplicate chunks.
+	if err := e.Ingest(ctx, "doc.txt", strings.NewReader(hybridFacts), nil); err != nil {
+		t.Fatalf("re-ingest failed: %v", err)
+	}
+	if again := countVectorChunks(); again != first {
+		t.Fatalf("re-ingest changed chunk count from %d to %d, want stable (idempotent IDs)", first, again)
 	}
 }
 
@@ -308,10 +406,10 @@ func TestEngine_QueryWithFilter(t *testing.T) {
 	docEng := "Engineering teams use distributed consensus algorithms like Raft."
 	docMkt := "Marketing teams focus on customer acquisition campaigns and branding."
 
-	if err := e.Ingest(ctx, strings.NewReader(docEng), map[string]any{"department": "engineering"}); err != nil {
+	if err := e.Ingest(ctx, "eng.txt", strings.NewReader(docEng), map[string]any{"department": "engineering"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.Ingest(ctx, strings.NewReader(docMkt), map[string]any{"department": "marketing"}); err != nil {
+	if err := e.Ingest(ctx, "mkt.txt", strings.NewReader(docMkt), map[string]any{"department": "marketing"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -320,8 +418,8 @@ func TestEngine_QueryWithFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Query with engineering filter failed: %v", err)
 	}
-	if strings.Contains(gotEng, "Marketing") {
-		t.Fatalf("expected only engineering results, got %s", gotEng)
+	if strings.Contains(gotEng.Text, "Marketing") {
+		t.Fatalf("expected only engineering results, got %s", gotEng.Text)
 	}
 
 	// Query with marketing filter
@@ -329,8 +427,7 @@ func TestEngine_QueryWithFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Query with marketing filter failed: %v", err)
 	}
-	if strings.Contains(gotMkt, "Engineering") {
-		t.Fatalf("expected only marketing results, got %s", gotMkt)
+	if strings.Contains(gotMkt.Text, "Engineering") {
+		t.Fatalf("expected only marketing results, got %s", gotMkt.Text)
 	}
 }
-

@@ -2,14 +2,17 @@ package ragout
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
 	"golang.org/x/sync/errgroup"
 )
 
-// Ingest streams raw data, chunks it, generates embeddings in parallel, and indexes into stores.
-func (e *Engine) Ingest(ctx context.Context, r io.Reader, metadata map[string]any) error {
+// Ingest streams raw data from source (e.g. a filename, used to pick a reader by
+// extension and recorded on every chunk's metadata[MetadataSource]), chunks it,
+// generates embeddings in parallel, and indexes into stores.
+func (e *Engine) Ingest(ctx context.Context, source string, r io.Reader, metadata map[string]any) error {
 	if e.reader == nil {
 		return ErrNilReader
 	}
@@ -20,8 +23,11 @@ func (e *Engine) Ingest(ctx context.Context, r io.Reader, metadata map[string]an
 		return err
 	}
 
+	meta := CloneMetadata(metadata)
+	meta[MetadataSource] = source
+
 	// 1. Read documents from stream with DoS boundaries
-	docs, err := e.reader.Read(ctx, r, metadata)
+	docs, err := e.reader.Read(ctx, r, meta)
 	if err != nil {
 		return fmt.Errorf("ragout.Ingest: read error: %w", err)
 	}
@@ -29,9 +35,14 @@ func (e *Engine) Ingest(ctx context.Context, r io.Reader, metadata map[string]an
 		return ErrEmptyDocument
 	}
 
-	// 2. Chunk documents
+	// 2. Chunk documents. IDs are derived from (source, content) so that retrying a
+	// failed ingest, or re-ingesting the same file, overwrites the same chunks instead
+	// of duplicating them.
 	var allChunks []Chunk
 	for _, doc := range docs {
+		if doc.ID == "" {
+			doc.ID = DocumentID(source, doc.Content)
+		}
 		chunks, err := e.chunker.Chunk(ctx, doc)
 		if err != nil {
 			return fmt.Errorf("ragout.Ingest: chunk error: %w", err)
@@ -66,9 +77,37 @@ func (e *Engine) Ingest(ctx context.Context, r io.Reader, metadata map[string]an
 	}
 
 	if err := g.Wait(); err != nil {
-		return fmt.Errorf("ragout.Ingest: storage indexing error: %w", err)
+		// One store may have already committed the chunks before the other failed.
+		// Roll both back using the chunks' deterministic IDs so a retry can't leave
+		// a duplicate or half-indexed document behind.
+		return e.rollbackIngest(allChunks, err)
 	}
 
 	IngestedChunksTotal.Add(float64(len(allChunks)))
 	return nil
+}
+
+func (e *Engine) rollbackIngest(chunks []Chunk, writeErr error) error {
+	ids := make([]string, len(chunks))
+	for i, c := range chunks {
+		ids[i] = c.ID
+	}
+
+	// Use a fresh, uncancelled context: the write failed (or its context was
+	// cancelled), but the rollback must still run to avoid leaving a partial index.
+	rbCtx := context.WithoutCancel(context.Background())
+	errs := []error{fmt.Errorf("ragout.Ingest: storage indexing error: %w", writeErr)}
+
+	if e.vStore != nil {
+		if err := e.vStore.Delete(rbCtx, ids); err != nil {
+			errs = append(errs, fmt.Errorf("ragout.Ingest: vector store rollback failed: %w", err))
+		}
+	}
+	if e.iStore != nil {
+		if err := e.iStore.Delete(rbCtx, ids); err != nil {
+			errs = append(errs, fmt.Errorf("ragout.Ingest: index store rollback failed: %w", err))
+		}
+	}
+
+	return errors.Join(errs...)
 }

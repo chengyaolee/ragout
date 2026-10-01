@@ -34,12 +34,12 @@ func TestQuerySpanTreeAndStageMetrics(t *testing.T) {
 	}
 
 	e := testEngine(t)
-	got, err := e.Query(context.Background(), "channels")
+	answer, err := e.Query(context.Background(), "channels")
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
-	if got != "channels serialize access" {
-		t.Fatalf("answer = %q", got)
+	if answer.Text != "channels serialize access" {
+		t.Fatalf("answer = %q", answer.Text)
 	}
 
 	spans := map[string]sdktrace.ReadOnlySpan{}
@@ -128,7 +128,7 @@ func TestQuerySpanRecordsError(t *testing.T) {
 func TestIngestCountsChunks(t *testing.T) {
 	before := counterValue(t)
 	e := testEngine(t)
-	if err := e.Ingest(context.Background(), strings.NewReader("ignored"), nil); err != nil {
+	if err := e.Ingest(context.Background(), "doc.txt", strings.NewReader("ignored"), nil); err != nil {
 		t.Fatalf("Ingest: %v", err)
 	}
 	if got := counterValue(t) - before; got != 2 {
@@ -206,6 +206,7 @@ func (staticDense) SearchDense(context.Context, []float32, int, map[string]any) 
 		Score:      1,
 	}}, nil
 }
+func (staticDense) Delete(context.Context, []string) error { return nil }
 
 type staticSparse struct{ terms int }
 
@@ -217,7 +218,8 @@ func (staticSparse) SearchSparse(context.Context, string, int, map[string]any) (
 		Score:       1,
 	}}, nil
 }
-func (s staticSparse) TermsMatched(string) int { return s.terms }
+func (s staticSparse) TermsMatched(string) int              { return s.terms }
+func (staticSparse) Delete(context.Context, []string) error { return nil }
 
 type echoReranker struct{}
 
@@ -230,20 +232,15 @@ func (echoReranker) Rerank(context.Context, string, []ScoredChunk, int) ([]Score
 
 type echoGenerator struct{}
 
-func (echoGenerator) Generate(context.Context, string, []ScoredChunk) (string, error) {
-	return "", nil
-}
-func (echoGenerator) GenerateStream(context.Context, string, []ScoredChunk, StreamCallback) error {
-	return nil
-}
-func (echoGenerator) GenerateIter(_ context.Context, _ string, candidates []ScoredChunk) iter.Seq2[string, error] {
-	return func(yield func(string, error) bool) {
+func (echoGenerator) GenerateIter(_ context.Context, _ string, candidates []ScoredChunk) ([]ScoredChunk, iter.Seq2[string, error]) {
+	tokens := func(yield func(string, error) bool) {
 		if len(candidates) == 0 || candidates[0].Chunk.Content == "" {
 			yield("", ErrNoResults)
 			return
 		}
 		yield(candidates[0].Chunk.Content, nil)
 	}
+	return candidates, tokens
 }
 
 func histogramCount(t *testing.T, stage string) uint64 {

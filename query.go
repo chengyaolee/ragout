@@ -11,90 +11,104 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// Query executes a synchronous end-to-end RAG query and returns the complete synthesized answer.
-func (e *Engine) Query(ctx context.Context, query string, opts ...QueryOption) (string, error) {
-	var b strings.Builder
-	for token, err := range e.QueryIter(ctx, query, opts...) {
+// Query executes a synchronous end-to-end RAG query and returns the complete
+// synthesized answer together with the chunks that produced it.
+func (e *Engine) Query(ctx context.Context, query string, opts ...QueryOption) (Answer, error) {
+	answer, tokens := e.QueryIter(ctx, query, opts...)
+	for _, err := range tokens {
 		if err != nil {
-			return "", err
+			return *answer, err
 		}
-		b.WriteString(token)
 	}
-	return b.String(), nil
+	return *answer, nil
 }
 
-// QueryStream pushes generated tokens to the provided StreamCallback.
-func (e *Engine) QueryStream(ctx context.Context, query string, cb StreamCallback, opts ...QueryOption) error {
+// QueryStream pushes generated tokens to the provided StreamCallback and returns the
+// completed answer (including its sources) once streaming finishes.
+func (e *Engine) QueryStream(ctx context.Context, query string, cb StreamCallback, opts ...QueryOption) (Answer, error) {
 	if cb == nil {
-		return ErrNilCallback
+		return Answer{}, ErrNilCallback
 	}
-	for token, err := range e.QueryIter(ctx, query, opts...) {
+	answer, tokens := e.QueryIter(ctx, query, opts...)
+	for token, err := range tokens {
 		if err != nil {
-			return err
+			return *answer, err
 		}
 		if err := cb(token); err != nil {
-			return err
+			return *answer, err
 		}
 	}
-	return nil
+	return *answer, nil
 }
 
-// QueryIter streams generated tokens using modern Go 1.23+ range-over-func iterators.
-func (e *Engine) QueryIter(ctx context.Context, query string, opts ...QueryOption) iter.Seq2[string, error] {
-	return func(yield func(string, error) bool) {
-		params := QueryParams{
-			TopKRecall: e.topKRecall,
-			TopNRerank: e.topNRerank,
-		}
-		for _, opt := range opts {
-			opt(&params)
-		}
+// QueryIter runs retrieval and starts generation, returning the Answer (with Retrieved
+// and Sources already populated, before any token is produced) alongside a lazy token
+// stream using modern Go 1.23+ range-over-func iterators. Answer.Text is filled in as
+// the stream is consumed, and is complete once the iterator finishes.
+func (e *Engine) QueryIter(ctx context.Context, query string, opts ...QueryOption) (*Answer, iter.Seq2[string, error]) {
+	answer := &Answer{}
 
-		ctx, end := e.traceQuery(ctx, query)
-		var queryErr error
-		defer func() { end(queryErr) }()
+	params := QueryParams{
+		TopKRecall: e.topKRecall,
+		TopNRerank: e.topNRerank,
+	}
+	for _, opt := range opts {
+		opt(&params)
+	}
 
-		if strings.TrimSpace(query) == "" {
-			queryErr = ErrEmptyQuery
-			yield("", queryErr)
-			return
-		}
-		if e.generator == nil {
-			queryErr = ErrNilGenerator
-			yield("", queryErr)
-			return
-		}
-		if err := ctx.Err(); err != nil {
-			queryErr = err
-			yield("", queryErr)
-			return
-		}
+	ctx, endQuery := e.traceQuery(ctx, query)
 
-		candidates, err := e.retrieveCandidates(ctx, query, params)
-		if err != nil {
-			queryErr = err
-			yield("", queryErr)
-			return
+	fail := func(err error) (*Answer, iter.Seq2[string, error]) {
+		endQuery(err)
+		return answer, func(yield func(string, error) bool) {
+			yield("", err)
 		}
-		defer releaseCandidates(candidates)
-		if len(candidates) == 0 {
-			queryErr = ErrNoResults
-			yield("", queryErr)
-			return
-		}
+	}
 
-		genStart := time.Now()
-		genCtx, genSpan := startSpan(ctx, "query.generation",
-			attribute.Int("prompt_tokens", promptTokens(query, candidates)),
-		)
+	if strings.TrimSpace(query) == "" {
+		return fail(ErrEmptyQuery)
+	}
+	if e.generator == nil {
+		return fail(ErrNilGenerator)
+	}
+	if err := ctx.Err(); err != nil {
+		return fail(err)
+	}
+
+	candidates, err := e.retrieveCandidates(ctx, query, params)
+	if err != nil {
+		return fail(err)
+	}
+	// Candidates are backed by a pooled buffer that's about to be recycled; clone the
+	// values out so Answer.Retrieved stays valid for the caller.
+	retrieved := append([]ScoredChunk(nil), candidates...)
+	releaseCandidates(candidates)
+	answer.Retrieved = retrieved
+
+	if len(retrieved) == 0 {
+		return fail(ErrNoResults)
+	}
+
+	genStart := time.Now()
+	genCtx, genSpan := startSpan(ctx, "query.generation")
+
+	sources, tokens := e.generator.GenerateIter(genCtx, query, retrieved)
+	answer.Sources = sources
+	genSpan.SetAttributes(attribute.Int("prompt_tokens", promptTokens(query, sources)))
+
+	var text strings.Builder
+	first := true
+
+	wrapped := func(yield func(string, error) bool) {
 		var genErr error
 		defer func() {
 			QueryDuration.WithLabelValues("generation").Observe(time.Since(genStart).Seconds())
 			endSpan(genSpan, genErr)
+			answer.Text = text.String()
+			endQuery(genErr)
 		}()
 
-		first := true
-		for token, tokenErr := range e.generator.GenerateIter(genCtx, query, candidates) {
+		for token, tokenErr := range tokens {
 			if first {
 				first = false
 				genSpan.SetAttributes(attribute.Float64(
@@ -104,13 +118,15 @@ func (e *Engine) QueryIter(ctx context.Context, query string, opts ...QueryOptio
 			}
 			if tokenErr != nil {
 				genErr = tokenErr
-				queryErr = tokenErr
 			}
+			text.WriteString(token)
 			if !yield(token, tokenErr) {
 				return
 			}
 		}
 	}
+
+	return answer, wrapped
 }
 
 // retrieveCandidates executes fan-out parallel retrieval, RRF fusion, and quality reranking.
