@@ -11,8 +11,8 @@ import (
 
 var tracer = otel.Tracer("github.com/chengyaolee/ragout")
 
-func (e *Engine) traceQuery(ctx context.Context, query string) (context.Context, func(err error)) {
-	ctx, span := tracer.Start(ctx, "ragout.Engine.Query")
+func (e *Engine) traceQuery(ctx context.Context, name, query string) (context.Context, func(err error)) {
+	ctx, span := tracer.Start(ctx, name)
 	span.SetAttributes(
 		attribute.String("ragout.query", query),
 		attribute.Int("ragout.top_k_recall", e.topKRecall),

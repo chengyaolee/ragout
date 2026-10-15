@@ -1,6 +1,9 @@
 package ragout
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 var (
 	ErrNilReader    = errors.New("ragout: reader is required for ingestion")
@@ -21,8 +24,11 @@ type Engine struct {
 	reranker  Reranker
 	generator Generator
 
-	contextualizer Contextualizer // situational context indexed with each chunk (default: MetadataContext)
-	expander       Expander       // optional: rewrites final candidates before generation
+	contextualizer   Contextualizer // situational context indexed with each chunk (default: MetadataContext)
+	expander         Expander       // optional: rewrites final candidates before generation
+	transformer      QueryTransformer
+	transformTimeout time.Duration  // 0: the transformer runs under the query's own deadline
+	fusion           FusionStrategy // default: RRF(rrfK)
 
 	topKRecall       int // Number of candidates recalled from each store (default: 50)
 	topNRerank       int // Number of candidates passed to generator (default: 5)
@@ -43,6 +49,10 @@ func NewEngine(options ...EngineOption) (*Engine, error) {
 
 	for _, opt := range options {
 		opt(e)
+	}
+
+	if e.fusion == nil {
+		e.fusion = RRF(e.rrfK)
 	}
 
 	// Validation: At least one store must exist

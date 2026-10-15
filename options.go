@@ -1,5 +1,7 @@
 package ragout
 
+import "time"
+
 type EngineOption func(*Engine)
 
 func WithReader(r Reader) EngineOption            { return func(e *Engine) { e.reader = r } }
@@ -14,6 +16,24 @@ func WithGenerator(g Generator) EngineOption      { return func(e *Engine) { e.g
 // default is MetadataContext; nil turns enrichment off.
 func WithContextualizer(c Contextualizer) EngineOption {
 	return func(e *Engine) { e.contextualizer = c }
+}
+
+// WithQueryTransformer rewrites each question before retrieval (see the transform
+// package). The default is none: the question is searched as written.
+func WithQueryTransformer(t QueryTransformer) EngineOption {
+	return func(e *Engine) { e.transformer = t }
+}
+
+// WithTransformTimeout bounds the QueryTransformer call. When it runs out, the query
+// continues with the original question, as it does on a transformer error. The default
+// (0) applies no extra deadline.
+func WithTransformTimeout(d time.Duration) EngineOption {
+	return func(e *Engine) { e.transformTimeout = d }
+}
+
+// WithFusion replaces the default RRF(WithRRFK) fusion of retrieval result lists.
+func WithFusion(f FusionStrategy) EngineOption {
+	return func(e *Engine) { e.fusion = f }
 }
 
 // WithExpander rewrites the final candidates before generation (e.g. expand.Neighbors).
@@ -61,6 +81,7 @@ type QueryParams struct {
 	Filter     map[string]any
 	TopKRecall int
 	TopNRerank int
+	History    []Turn // earlier turns, oldest first; only a QueryTransformer reads it
 }
 
 // QueryOption configures individual query executions.
@@ -71,6 +92,13 @@ func WithQueryFilter(filter map[string]any) QueryOption {
 	return func(p *QueryParams) {
 		p.Filter = filter
 	}
+}
+
+// WithHistory passes the conversation so far, oldest first. The engine keeps no state
+// between queries; a QueryTransformer such as transform.Condense uses it to turn a
+// follow-up into a standalone question.
+func WithHistory(turns []Turn) QueryOption {
+	return func(p *QueryParams) { p.History = turns }
 }
 
 // WithQueryTopKRecall overrides topKRecall for this specific query.

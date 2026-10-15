@@ -70,6 +70,41 @@ type Answer struct {
 	Text      string
 	Sources   []ScoredChunk // chunks placed in the prompt; Sources[i] is cited as [i+1]
 	Retrieved []ScoredChunk // every candidate handed to the generator, best first
+	Question  string        // the standalone question reranked and answered (see QueryTransformer)
+	Searches  []Search      // searches requested, the question first; one whose index is not configured is skipped
+	// TransformErr is the QueryTransformer's error or timeout, if any. The query still
+	// ran, with whatever the transformer returned (at least the original question).
+	TransformErr error
+}
+
+// Turn is one message of a conversation, passed per query with WithHistory.
+type Turn struct {
+	Role    string // "user" or "assistant"
+	Content string
+}
+
+// SearchTarget says which index a search runs against.
+type SearchTarget int
+
+const (
+	SearchAll    SearchTarget = iota // every configured index
+	SearchDense                      // vector store only
+	SearchSparse                     // BM25 index only
+)
+
+// Search is one retrieval request.
+type Search struct {
+	Text   string
+	Target SearchTarget
+}
+
+// Rewrite is what a QueryTransformer produces.
+type Rewrite struct {
+	// Question is the standalone question the reranker and generator use, and that
+	// is always searched on every index. Empty keeps the original question.
+	Question string
+	// Searches run in addition to the question.
+	Searches []Search
 }
 
 type StreamCallback func(token string) error
@@ -115,6 +150,27 @@ type Completer interface {
 // The engine defaults to MetadataContext.
 type Contextualizer interface {
 	Contextualize(ctx context.Context, doc Document, chunks []Chunk) ([]string, error)
+}
+
+// QueryTransformer rewrites a question before retrieval, e.g. condensing a follow-up
+// with its history or adding rephrasings. If it returns an error, the engine records
+// it on the query.transform span and continues with whatever Rewrite was returned
+// (the zero value keeps the original question), unless the context was cancelled.
+type QueryTransformer interface {
+	Transform(ctx context.Context, question string, history []Turn) (Rewrite, error)
+}
+
+// FusionStrategy blends ranked candidate lists (best first) into one ranking of at
+// most topK. Each search contributes a dense and/or a sparse list, in search order.
+type FusionStrategy interface {
+	Fuse(lists [][]ScoredChunk, topK int) []ScoredChunk
+}
+
+// HistoryGenerator is an optional Generator capability: answering with earlier turns
+// of the conversation in the prompt. The engine calls it instead of GenerateIter only
+// when the query passed WithHistory; generators decide how many turns to include.
+type HistoryGenerator interface {
+	GenerateIterWithHistory(ctx context.Context, question string, history []Turn, candidates []ScoredChunk) (sources []ScoredChunk, tokens iter.Seq2[string, error])
 }
 
 // Expander rewrites the final candidates before generation, e.g. widening each hit

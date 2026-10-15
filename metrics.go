@@ -13,7 +13,13 @@ var (
 			Help:    "Latency distribution of RAG query stages.",
 			Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0},
 		},
-		[]string{"stage"}, // "embed", "dense", "sparse", "fusion", "rerank", "generation"
+		[]string{"stage"}, // "transform", "embed", "dense", "sparse", "fusion", "rerank", "expand", "generation"
+	)
+	TransformFailuresTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "ragout_query_transform_failures_total",
+			Help: "Queries whose QueryTransformer failed or timed out and fell back.",
+		},
 	)
 	IngestedChunksTotal = prometheus.NewCounter(
 		prometheus.CounterOpts{
@@ -29,7 +35,7 @@ func RegisterMetrics(reg prometheus.Registerer) error {
 	if reg == nil {
 		reg = prometheus.DefaultRegisterer
 	}
-	collectors := []prometheus.Collector{QueryDuration, IngestedChunksTotal}
+	collectors := []prometheus.Collector{QueryDuration, TransformFailuresTotal, IngestedChunksTotal}
 	for _, c := range collectors {
 		if err := reg.Register(c); err != nil {
 			var alreadyRegistered prometheus.AlreadyRegisteredError
