@@ -19,6 +19,15 @@ type IndexStore interface {
 
 `SearchDense` fills `DenseScore` and `Score`. `SearchSparse` fills `SparseScore` and `Score`. `Delete` ignores unknown IDs. The engine calls `Delete` on both stores when one of the ingest writes fails.
 
+All four stores also implement two optional interfaces:
+
+| Interface | Method | Used by |
+| --- | --- | --- |
+| `ragout.ChunkGetter` | `GetChunks(ctx, ids)`, skipping unknown IDs | `expand.Neighbors`, `expand.Section` |
+| `ragout.SourceDeleter` | `DeleteSource(ctx, source, keep)`, removing a source's chunks except `keep` | `Engine.DeleteSource`, `WithReplaceSource` |
+
+A custom store can implement either one to support those features.
+
 ## In-memory vectors
 
 ```go
@@ -54,7 +63,7 @@ err := store.SaveFile("vectors.gob", vectors)
 err = store.LoadFile("vectors.gob", vectors)
 ```
 
-`SaveFile` encodes to a buffer, writes `path.tmp`, and renames it over `path`. `LoadFile` returns nil when the file does not exist. Gob needs basic metadata types, or a prior `gob.Register` for anything else. Loading a BM25 snapshot re-indexes the chunks so the posting lists match the corpus statistics.
+`SaveFile` encodes to a buffer, writes `path.tmp`, and renames it over `path`. `LoadFile` returns nil when the file does not exist. Gob needs basic metadata types, or a prior `gob.Register` for anything else. Loading a BM25 snapshot re-indexes the chunks so the posting lists match the corpus statistics. Both stores keep `Chunk.Context`, so a reloaded index matches on the same title, section, or LLM context as before.
 
 ## Chroma
 
@@ -66,7 +75,7 @@ cs, err := store.NewChromaStore(ctx, "http://localhost:8000", "notes",
 )
 ```
 
-HTTP only, Chroma API v2. The constructor gets or creates the collection and keeps its id. Upsert sends ids, embeddings, documents, and metadata. `ragout_document_id` and `ragout_index` are reserved metadata keys used to rebuild `Chunk` on search. Filters are translated to a Chroma `where` document. See [Filter by metadata](../how-to/metadata-filters.md).
+HTTP only, Chroma API v2. The constructor gets or creates the collection and keeps its id. Upsert sends ids, embeddings, documents, and metadata. `ragout_document_id` and `ragout_index` are reserved metadata keys used to rebuild `Chunk` on search and lookup. `DeleteSource` lists the source's IDs with Chroma's `get`, then deletes the ones not kept. Filters are translated to a Chroma `where` document. See [Filter by metadata](../how-to/metadata-filters.md).
 
 There is no BM25 inside Chroma. Keep a `BM25Index` beside it for hybrid search.
 
@@ -78,7 +87,7 @@ qs, err := store.NewQdrantStore(ctx, "http://localhost:6333", "notes", emb.Dimen
 )
 ```
 
-HTTP only. The constructor PUTs the collection with cosine distance and the given size. Status 409 means the collection is already there. Upsert writes points whose payload holds the chunk text under `ragout_content`, plus `ragout_document_id`, `ragout_index`, and your metadata. Search uses Qdrant's query API. Filters become `must`, `must_not`, and `range`.
+HTTP only. The constructor PUTs the collection with cosine distance and the given size. Status 409 means the collection is already there. Upsert writes points whose payload holds the chunk text under `ragout_content`, plus `ragout_document_id`, `ragout_index`, and your metadata. Search uses Qdrant's query API. Filters become `must`, `must_not`, and `range`. `GetChunks` reads points by ID. `DeleteSource` deletes with a filter on `source` and a `has_id` exclusion for the kept IDs.
 
 Do not reuse the reserved payload keys for your own fields.
 

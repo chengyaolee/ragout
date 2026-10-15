@@ -25,9 +25,14 @@ How a document becomes chunks, how a question becomes an answer, and what each s
 Short recipes. Each one assumes you already have an `Engine`.
 
 - [Ingest files](how-to/ingest-files.md)
+- [Update and delete sources](how-to/update-sources.md)
+- [Give chunks context](how-to/chunk-context.md)
 - [Filter by metadata](how-to/metadata-filters.md)
 - [Choose a store](how-to/stores.md)
+- [Rewrite questions](how-to/query-rewrite.md)
 - [Rerank results](how-to/rerank.md)
+- [Widen hits before generation](how-to/expand-hits.md)
+- [Measure retrieval](how-to/evaluate.md)
 - [Traces and metrics](how-to/observability.md)
 
 ## Components
@@ -44,6 +49,6 @@ Constructors, options, and the path each package takes at runtime.
 
 ## Roadmap
 
-What this release includes, and the milestones that are specified but not shipped: contextual retrieval, query transforms, a local cross-encoder, agentic loops, and GraphRAG.
+What this release includes, and the milestones that are specified but not shipped: a local cross-encoder, agentic loops, GraphRAG, and scale work. Changes between releases are in the [changelog](../CHANGELOG.md).
 
 - [Roadmap](roadmap.md)

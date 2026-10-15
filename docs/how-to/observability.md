@@ -21,13 +21,16 @@ The tracer name is `github.com/chengyaolee/ragout`.
 
 | Span | When | Attributes |
 | --- | --- | --- |
-| `ragout.Engine.Query` | Every query | `ragout.query`, `ragout.top_k_recall`, `ragout.top_n_rerank` |
-| `query.retrieval` | Around the fan-out | |
-| `query.embed` | Question embedding | `text.len`, `model` (the embedder's Go type) |
-| `query.dense_search` | Vector search | `top_k`, `candidates_found` |
-| `query.sparse_search` | BM25 search | `terms_matched`, `candidates_found` |
-| `query.rrf_fusion` | Both sides returned hits | `rrf_k`, `fused_count` |
+| `ragout.Engine.Query` | Every `Query`, `QueryStream`, `QueryIter` | `ragout.query`, `ragout.top_k_recall`, `ragout.top_n_rerank` |
+| `ragout.Engine.Retrieve` | Every `Retrieve` | Same as above |
+| `query.transform` | A query transformer is configured | `transformer_type`, `history_turns`, `searches`. Error status when it failed or timed out, even though the query continued. |
+| `query.retrieval` | Around the fan-out | `searches` |
+| `query.embed` | One embedding call for every dense search | `text.len` (total), `texts`, `model` (the embedder's Go type) |
+| `query.dense_search` | Each vector search | `top_k`, `candidates_found` |
+| `query.sparse_search` | Each BM25 search | `terms_matched`, `candidates_found` |
+| `query.rrf_fusion` | More than one result list had hits | `lists`, `fused_count`, and `rrf_k` with the default fusion |
 | `query.reranker` | A reranker is configured | `reranker_type`, `top_n` |
+| `query.expand` | An expander is configured | `expander_type` |
 | `query.generation` | Token stream | `prompt_tokens`, `first_token_latency_ms` |
 
 `terms_matched` is set when the index store implements `TermsMatched(string) int`. `BM25Index` does. A failed span records the error and sets status `Error`. `ragout.query` is the raw question text. Treat trace exports as sensitive if questions are.
@@ -38,16 +41,17 @@ Ingest does not open these spans. It does increment the ingest counter below.
 
 ## Metrics
 
-`init` registers two collectors on `prometheus.DefaultRegisterer`:
+`init` registers three collectors on `prometheus.DefaultRegisterer`:
 
 | Name | Type | Labels |
 | --- | --- | --- |
-| `ragout_query_duration_seconds` | Histogram | `stage`: `embed`, `dense`, `sparse`, `fusion`, `rerank`, `generation` |
+| `ragout_query_duration_seconds` | Histogram | `stage`: `transform`, `embed`, `dense`, `sparse`, `fusion`, `rerank`, `expand`, `generation` |
+| `ragout_query_transform_failures_total` | Counter | Queries whose transformer failed or timed out and fell back |
 | `ragout_ingested_chunks_total` | Counter | Chunks written by a successful `Ingest` |
 
 Buckets are 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s.
 
-Expose them with the Prometheus HTTP handler on the default gatherer. `fusion` and `rerank` observations appear only when those stages run.
+Expose them with the Prometheus HTTP handler on the default gatherer. `transform`, `fusion`, `rerank`, and `expand` observations appear only when those stages run.
 
 If your process uses a custom registerer, call `ragout.RegisterMetrics(reg)`. An already-registered collector is ignored. Any other registration error is returned.
 

@@ -38,6 +38,28 @@ gen := generator.NewOllamaGenerator("llama3.2", "http://localhost:11434/api/gene
 
 An empty endpoint becomes `http://localhost:11434/api/generate`. The budgeter is called with an empty system string, so the prompt starts at "Context Information:". The response is a JSON line stream. Each object contributes its `response` field until `done` is true. The header timeout is 30 seconds.
 
+`generator.WithOllamaNumCtx(n)` sends `options.num_ctx` with every request. Ollama cuts a prompt longer than its context window without an error, so set it at least as large as the budgeter's token limit plus room for the answer. Without it, Ollama's own default applies.
+
+## One-shot calls
+
+Both generators also implement `ragout.Completer`, a non-streaming call used by the `contextual` and `transform` packages:
+
+```go
+out, err := gen.Complete(ctx, prefix, prompt)
+```
+
+`prefix` is the part shared across many calls, such as a whole document, and `prompt` is the part that varies. The prefix is sent first and unchanged, so providers that cache repeated prefixes (OpenAI, and Ollama's KV cache) reuse it.
+
+## Conversation history
+
+Both generators implement `ragout.HistoryGenerator`, but include no history unless you ask:
+
+```go
+gen := generator.NewOpenAIGenerator(apiKey, generator.WithOpenAIHistoryTurns(4))
+```
+
+The engine calls `GenerateIterWithHistory` instead of `GenerateIter` only when the query passed `ragout.WithHistory`. Up to `n` of the latest turns go before the context, under a line that marks them as reference only, so citations keep pointing at sources. `WithOllamaHistoryTurns` is the Ollama equivalent.
+
 ## Context budgeter
 
 ```go
@@ -52,6 +74,7 @@ budgeter := generator.NewContextBudgeter(counter, 8192)
 | `AssembleContext` | Selects and formats chunks within the budgeter's max. |
 | `AssembleContextWithBudget` | Same, with an explicit budget. |
 | `BuildPrompt` | Adds the instruction and the question, then calls assemble with whatever tokens remain. |
+| `BuildPromptWithHistory` | Same, with earlier turns placed before the context. History gets at most a quarter of the budget; the newest turns are kept. |
 
 Selection walks candidates in order, skips any chunk that does not fit, then runs `ReorderLostInTheMiddle`. Citation numbers are assigned after that reorder. The formatted block for each chunk is:
 

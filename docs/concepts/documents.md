@@ -14,11 +14,11 @@ type Document struct {
 }
 ```
 
-A reader returns one or more documents. The built-in readers each return a single document: the text of the file, with scripts and tags removed for HTML, and with a simple frontmatter block lifted into metadata for Markdown.
+A reader returns one or more documents. The text and PDF readers return one document per file. The Markdown, HTML, and DOCX readers return one document per heading section, with the heading path in `metadata["section"]`. See [Readers](../components/readers.md).
 
 `Ingest` sets `metadata["source"]` to the source name before the reader runs. That key is `ragout.MetadataSource`. If you pass your own `source` key, the source argument replaces it.
 
-If `Document.ID` is empty, ingest sets it to `DocumentID(source, content)`, a UUID derived from the source name and the text. The same file and the same bytes always get the same ID.
+If `Document.ID` is empty, ingest sets it to `DocumentID(source, content)`, a UUID derived from the source name and the text (and the section path, when there is one). The same file and the same bytes always get the same ID.
 
 ## Chunk
 
@@ -28,10 +28,13 @@ type Chunk struct {
     DocumentID string
     Index      int
     Content    string
+    Context    string
     Embedding  []float32
     Metadata   map[string]any
 }
 ```
+
+`Content` is the chunk's text. It is what the generator reads and what citations quote. `Context` is extra text written at ingest by a contextualizer, by default the document's title and section. The embedder and the BM25 index see `Chunk.IndexText()`, which is `Context` followed by `Content`. See [Give chunks context](../how-to/chunk-context.md).
 
 The chunker copies the document's metadata onto every chunk. `CloneMetadata` copies the map. Nested maps and slices are shared with the original, so treat metadata values as immutable after ingest.
 
@@ -50,7 +53,7 @@ Search returns `ScoredChunk`:
 | `SparseScore` | BM25 score when this hit came from the index. |
 | `Score` | The score the current stage is ranking on. After fusion this is the reciprocal-rank sum, not the cosine or BM25 value. |
 
-A chunk that appears in only one list keeps that side's score field at zero.
+A chunk that appears in only one kind of list keeps the other score field at zero. When a question is searched several ways (see [Rewrite questions](../how-to/query-rewrite.md)), a fused chunk keeps the best `DenseScore` and `SparseScore` it got.
 
 ## Filters see this metadata
 

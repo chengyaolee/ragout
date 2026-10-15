@@ -2,45 +2,29 @@
 
 [Docs](../README.md) · [Pipeline](concepts/pipeline.md)
 
-This page is the public list of milestones. Each unshipped item is specified as a small interface the engine can skip when you do not configure it. None of the types below exist in this release. Importing them will not compile.
+This page is the public list of milestones. Each unshipped item is specified as a small interface the engine can skip when you do not configure it. None of the types in the unshipped sections below exist in this release. Importing them will not compile.
 
 ## Shipped
 
 - Hybrid retrieval: in-memory vectors, BM25, reciprocal rank fusion, and optional dense-only or sparse-only engines.
 - Rerankers: Cohere and maximal marginal relevance.
 - Cited generation with a token budget, lost-in-the-middle ordering, and `Query` / `QueryStream` / `QueryIter`.
-- Readers for text, Markdown, HTML, PDF, and DOCX. Character and tiktoken chunkers. OpenAI and Ollama clients. A rate-limited embedder.
+- Readers for text, Markdown, HTML, PDF, and DOCX, with Markdown, HTML, and DOCX split by heading section. Character and tiktoken chunkers. OpenAI and Ollama clients. A rate-limited embedder.
 - In-memory snapshots. Chroma and Qdrant over HTTP.
 - OpenTelemetry spans and Prometheus stage histograms.
-- Stable chunk IDs and a rollback when one store write fails.
+- Stable chunk IDs, a rollback when one store write fails, `DeleteSource`, and replace-on-ingest.
+- Chunk context: a title and section breadcrumb by default, or LLM-written context (`contextual.New`, Anthropic's contextual retrieval). See [Give chunks context](how-to/chunk-context.md).
+- Query rewriting: condense with history, multi-query, decomposition, and HyDE, with per-index searches, a timeout, and fallback. See [Rewrite questions](how-to/query-rewrite.md).
+- Pluggable fusion over any number of result lists, RRF by default.
+- Neighbor and section expansion before generation. See [Widen hits](how-to/expand-hits.md).
+- Optional conversation history in the answer prompt.
+- `Retrieve` and the `eval` package for measuring retrieval. See [Measure retrieval](how-to/evaluate.md).
 
-## Contextual retrieval
-
-Status: not in this release.
-
-Chunks are embedded on their own text today. A short chunk like a revenue figure has no company name and no year, so both BM25 and the vector index miss obvious questions.
-
-A `Contextualizer` will take the parent document and a chunk and return a sentence or two of situational context. Ingest will prepend that context before embedding, and keep the original chunk text for display and citation. The call will be batched and bounded by a worker count. With no contextualizer configured, ingest stays on the path it has now.
-
-## Query transformation
+## Score-blending fusion
 
 Status: not in this release.
 
-A query is sent to search as you wrote it. A `QueryTransformer` will sit in front of retrieval and produce one or more search strings:
-
-- Multi-query expansion, several phrasings of the same question, searched concurrently and fused with the same reciprocal rank fusion the engine already uses.
-- HyDE, a hypothetical answer that is embedded in place of the raw question.
-- Subquery decomposition, for questions that need more than one lookup.
-
-With no transformer configured, the question string is the only search input.
-
-## Pluggable fusion
-
-Status: not in this release.
-
-The engine always fuses with reciprocal rank fusion when both sides return hits. `reranker.ConvexScoreCombination` already blends sigmoid-normalized dense and sparse scores, and the min-max and logistic helpers sit next to it, but `Engine` does not call them.
-
-A `FusionStrategy` option will keep RRF as the default and let you select score blending, including an alpha weight, without forking the query path.
+`WithFusion` accepts any `FusionStrategy`, and RRF is the only built-in one. `reranker.ConvexScoreCombination` already blends sigmoid-normalized dense and sparse scores for one dense and one sparse list. A built-in convex strategy waits on a question this release does not answer: with several searches per question, there is no single dense and sparse score to blend.
 
 ## Local cross-encoder
 
@@ -80,6 +64,14 @@ Status: not in this release. Chroma and Qdrant are already supported and are not
 - Graph database adapters (Neo4j over Cypher, and Bolt or openCypher for stores in that family) behind the same graph interface as the in-memory graph.
 - Ingest workers that pull contextualization and triple extraction off the request path.
 - An embedding cache in front of `Embedder`, and a cache in front of query transformation, so repeated questions do not call the model again.
+
+## Query rewrite follow-ups
+
+Status: not in this release. Each waits on evidence from `eval` that it is needed.
+
+- Weighted fusion, so rephrasings count less than the question itself.
+- A per-sub-question quota before the final cut, so `Decompose` evidence for one part of a question is not crowded out.
+- Filter extraction from the question (self-query), with an explicit allow-list of fields.
 
 ## Next
 

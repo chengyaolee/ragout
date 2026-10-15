@@ -21,7 +21,7 @@ engine, err := ragout.NewEngine(
 )
 ```
 
-`NewEngine` checks two things. At least one of the vector store and the index store must be set (`ErrNoStores`). A vector store requires an embedder (`ErrNilEmbedder`). Reader, chunker, reranker, and generator are checked later, when the call that needs them runs. The reranker is optional for the life of the engine.
+`NewEngine` checks three things. At least one of the vector store and the index store must be set (`ErrNoStores`). A vector store requires an embedder (`ErrNilEmbedder`). `WithReplaceSource` requires stores that can delete by source (`ErrDeleteUnsupported`). Reader, chunker, and generator are checked later, when the call that needs them runs. Every other stage is optional.
 
 ## Options
 
@@ -34,6 +34,12 @@ engine, err := ragout.NewEngine(
 | `WithIndexStore` | Sparse half. `Index`, `SearchSparse`, `Delete`. |
 | `WithReranker` | Optional second pass. |
 | `WithGenerator` | Required by every query method. |
+| `WithContextualizer` | Text indexed with each chunk but never shown to the generator. Default `MetadataContext()` (title and section breadcrumb); `nil` turns it off. See [Give chunks context](../how-to/chunk-context.md). |
+| `WithReplaceSource` | `Ingest` replaces a source instead of adding to it. See [Update and delete sources](../how-to/update-sources.md). |
+| `WithQueryTransformer` | Rewrites each question before retrieval. Default none. See [Rewrite questions](../how-to/query-rewrite.md). |
+| `WithTransformTimeout` | Deadline for the transformer; on timeout the query falls back to the original question. Default none. |
+| `WithFusion` | Replaces the default `RRF(k)` fusion of result lists. |
+| `WithExpander` | Widens hits before generation. Default none. See [Widen hits](../how-to/expand-hits.md). |
 | `WithTopKRecall` | Hits requested from each store. Default 50. |
 | `WithTopNRerank` | Hits kept after rerank, or the cut when there is no reranker. Default 5. |
 | `WithRRFK` | Fusion smoothing constant. Default 60. |
@@ -51,6 +57,7 @@ These apply to one call.
 | `WithQueryFilter` | Metadata filter for both stores. |
 | `WithQueryTopKRecall` | Overrides recall depth. |
 | `WithQueryTopNRerank` | Overrides the final cut. |
+| `WithHistory` | Earlier turns of the conversation, oldest first. Read by the query transformer, and by a generator that implements `HistoryGenerator`. |
 
 ## Methods
 
@@ -60,8 +67,17 @@ These apply to one call.
 | `Query(ctx, query, opts...) (Answer, error)` | Full answer. |
 | `QueryStream(ctx, query, cb, opts...) (Answer, error)` | One callback per token. |
 | `QueryIter(ctx, query, opts...) (*Answer, iter.Seq2[string, error])` | Sources filled before the iterator yields. |
+| `Retrieve(ctx, query, opts...) (Answer, error)` | Everything before generation. Needs no generator. `Text` and `Sources` stay empty. |
+| `DeleteSource(ctx, source) error` | Removes every chunk ingested from `source`, from every store. |
 
-`Answer.Text` is the generated string. `Answer.Sources` is the citation list (`Sources[i]` is `[i+1]`). `Answer.Retrieved` is every chunk passed into the generator.
+| `Answer` field | Meaning |
+| --- | --- |
+| `Text` | The generated string. |
+| `Sources` | The citation list. `Sources[i]` is `[i+1]`. |
+| `Retrieved` | Every chunk passed to the generator, after any expansion. |
+| `Question` | The standalone question that was reranked and answered. |
+| `Searches` | Every search requested, the question first. |
+| `TransformErr` | The query transformer's error or timeout, if any. The query still ran. |
 
 ## Errors
 
@@ -82,8 +98,10 @@ These apply to one call.
 | `ErrEmptyEmbeddings` | Embedder returned no vectors. |
 | `ErrCountMismatch` | Embedder returned a different count than it was given. |
 | `ErrDimensionMismatch` | Query vector length does not match a stored vector. |
+| `ErrNoSource` | `DeleteSource` with an empty name. |
+| `ErrDeleteUnsupported` | A configured store does not implement `SourceDeleter`. |
 
-Storage and HTTP failures are wrapped with `fmt.Errorf` and the stage name (`ragout.Ingest: ...`, `embed query failed`, `dense search failed`, `reranking failed`).
+Storage and HTTP failures are wrapped with `fmt.Errorf` and the stage name (`ragout.Ingest: ...`, `embed query failed`, `dense search failed`, `reranking failed`, `expansion failed`). A query transformer's error is not returned: it lands in `Answer.TransformErr`.
 
 ## Interfaces
 
@@ -119,6 +137,34 @@ type Generator interface {
 ```
 
 `GenerateIter` must return sources in citation order before the iterator runs. `sources[i]` is what the prompt calls `[i+1]`.
+
+Optional stages, each skipped when not configured:
+
+```go
+type Contextualizer interface {
+    Contextualize(ctx context.Context, doc Document, chunks []Chunk) ([]string, error)
+}
+type QueryTransformer interface {
+    Transform(ctx context.Context, question string, history []Turn) (Rewrite, error)
+}
+type FusionStrategy interface {
+    Fuse(lists [][]ScoredChunk, topK int) []ScoredChunk
+}
+type Expander interface {
+    Expand(ctx context.Context, candidates []ScoredChunk) ([]ScoredChunk, error)
+}
+type Completer interface { // one-shot model call, used by contextual and transform
+    Complete(ctx context.Context, prefix, prompt string) (string, error)
+}
+```
+
+Optional capabilities the engine checks for at runtime:
+
+| Interface | Implemented by | Used for |
+| --- | --- | --- |
+| `HistoryGenerator` | OpenAI and Ollama generators | History in the answer prompt |
+| `ChunkGetter` | All four stores | `expand.Neighbors` and `expand.Section` |
+| `SourceDeleter` | All four stores | `DeleteSource` and `WithReplaceSource` |
 
 ## Next
 

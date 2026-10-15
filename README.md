@@ -17,7 +17,10 @@ Ragout is that pipeline, already assembled, for code that has to stay in Go.
 - **Keyword and vector search run together.** BM25 and a vector index fan out on every question. Reciprocal rank fusion merges the two rankings, so a paraphrase and an exact token can both surface. Leave either store out and the query still runs.
 - **The answer names its sources.** Chunks compete for a token budget. The ones that fit are numbered `[1]`, `[2]`, and the strongest sit at both ends of the prompt, where models actually read them. `Answer.Sources[i]` is citation `[i+1]`.
 - **Nothing else has to be running.** The vector index and the BM25 index live in the process. Snapshot them to a file, or point the same interface at Chroma or Qdrant when the data outgrows memory.
-- **Each stage is one interface.** Swap the reader, the chunker, the embedder, the store, the reranker, or the generator without touching the engine. OpenAI and Ollama clients ship in the module. A type you write yourself is the same shape.
+- **Chunks keep their context.** Markdown, HTML, and DOCX are split at headings, and every chunk is indexed with its title and section, so "Revenue grew 24%" still matches "Acme 2024 results". LLM-written context is one option away.
+- **Questions can be rewritten, safely.** Follow-ups are condensed with the conversation, and rephrasings, sub-questions, or a HyDE passage can widen recall. A failed or slow rewrite falls back to the original question.
+- **Each stage is one interface.** Swap the reader, the chunker, the contextualizer, the query transformer, the embedder, the store, the reranker, the expander, or the generator without touching the engine. OpenAI and Ollama clients ship in the module. A type you write yourself is the same shape.
+- **You can measure it.** `Retrieve` runs search without generation, and the `eval` package scores hit rate, recall, and MRR on your own questions.
 
 | Project | What it is |
 | --- | --- |
@@ -70,60 +73,68 @@ for i, src := range answer.Sources {
 
 The runnable copy is [`examples/quickstart`](examples/quickstart/main.go). It reads `OPENAI_API_KEY` and a file path. Ollama setup is [local models](docs/getting-started/local.md).
 
-Readers cover `.txt`, `.md`, `.html`, `.pdf`, and `.docx`, with a byte cap. Chunk IDs stay stable across retries. If one store write fails, both stores drop that document. `Query`, `QueryStream`, and `QueryIter` share one retrieval path, and sources are filled before the first token. OpenTelemetry spans and Prometheus histograms record each stage.
+Readers cover `.txt`, `.md`, `.html`, `.pdf`, and `.docx`, with a byte cap. Chunk IDs stay stable across retries. If one store write fails, both stores drop that document. `WithReplaceSource` makes re-ingesting an edited file replace its old chunks, and `DeleteSource` removes a file. `Query`, `QueryStream`, and `QueryIter` share one retrieval path, and sources are filled before the first token. OpenTelemetry spans and Prometheus histograms record each stage.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
   subgraph ingest [Ingest]
-    source[Source stream] --> reader[Reader]
+    source[Source stream] --> reader[Reader: sections]
     reader --> chunker[Chunker]
-    chunker --> embed[Embedder]
+    chunker --> context[Contextualizer]
+    context --> embed[Embedder]
     embed --> vectorStore[Vector store]
-    chunker --> bm25[BM25 index]
+    context --> bm25[BM25 index]
   end
   subgraph query [Query]
-    question[Question] --> embedQuery[Embed question]
-    embedQuery --> dense[Dense search]
-    question --> sparse[Sparse search]
+    question[Question and history] --> rewrite[Query transformer]
+    rewrite --> embedQuery[Embed searches]
+    embedQuery --> dense[Dense searches]
+    rewrite --> sparse[Sparse searches]
     dense --> fusion[Reciprocal rank fusion]
     sparse --> fusion
     fusion --> rerank[Reranker]
-    rerank --> gen[Generator]
+    rerank --> expand[Expander]
+    expand --> gen[Generator]
     gen --> answer[Answer and citations]
   end
 ```
 
-Ingest chunks the document, embeds the chunks on a bounded worker pool, and writes the vector store and the BM25 index at the same time. Query embeds the question, fans out to both indexes, fuses the rankings, optionally reranks, and generates. With one store, fusion is skipped and that store's ranking is used. With no reranker, the engine keeps the first `topN` chunks.
+Ingest splits the document by section, chunks it, adds each chunk's title and section to the indexed text, embeds the chunks on a bounded worker pool, and writes the vector store and the BM25 index at the same time. Query optionally rewrites the question, fans every search out to the indexes, fuses the rankings, optionally reranks and expands, and generates. With one result list, fusion is skipped. With no reranker, the engine keeps the first `topN` chunks. Stages you do not configure do not run.
 
 ## Components
 
 | Piece | Package | Role |
 | --- | --- | --- |
-| Engine | [`ragout`](docs/components/engine.md) | `Ingest`, `Query`, `QueryStream`, `QueryIter` |
-| Readers | [`reader`](docs/components/readers.md) | Text, Markdown, HTML, PDF, DOCX, or dispatch by extension |
+| Engine | [`ragout`](docs/components/engine.md) | `Ingest`, `Query`, `QueryStream`, `QueryIter`, `Retrieve`, `DeleteSource` |
+| Readers | [`reader`](docs/components/readers.md) | Text, Markdown, HTML, PDF, DOCX (split by section), or dispatch by extension |
+| Chunk context | [`contextual`](docs/how-to/chunk-context.md) | LLM-written context; the default title and section breadcrumb is built in |
+| Query rewrite | [`transform`](docs/how-to/query-rewrite.md) | Condense, multi-query, decompose, HyDE, chain |
 | Chunkers | [`chunker`](docs/components/chunkers.md) | Recursive character windows, or tiktoken windows |
 | Embedders | [`embedder`](docs/components/embedders.md) | OpenAI, Ollama, and a rate limiter |
 | Stores | [`store`](docs/components/stores.md) | In-memory vectors, BM25, Chroma, Qdrant |
 | Rerankers | [`reranker`](docs/components/rerankers.md) | Cohere, or maximal marginal relevance |
-| Generators | [`generator`](docs/components/generators.md) | OpenAI and Ollama, with a context budget |
+| Expanders | [`expand`](docs/how-to/expand-hits.md) | Neighbor chunks, or the whole section |
+| Generators | [`generator`](docs/components/generators.md) | OpenAI and Ollama, with a context budget and optional history |
+| Evaluation | [`eval`](docs/how-to/evaluate.md) | Hit rate, recall, and MRR over your own questions |
 
 ## Documentation
 
 - [Get started](docs/getting-started/installation.md) — install, [quickstart](docs/getting-started/quickstart.md), [local Ollama](docs/getting-started/local.md)
 - [Concepts](docs/concepts/pipeline.md) — how a query runs, documents, hybrid retrieval, generation, streaming
-- [How-to guides](docs/how-to/ingest-files.md) — files, metadata filters, stores, reranking, traces
+- [How-to guides](docs/how-to/ingest-files.md) — files, updating sources, chunk context, filters, stores, query rewrite, reranking, expansion, evaluation, traces
 - [Components](docs/components/engine.md) — constructors and options for each package
-- [Roadmap](docs/roadmap.md) — contextual retrieval, query transforms, agentic loops, GraphRAG
+- [Roadmap](docs/roadmap.md) — local cross-encoder, agentic loops, GraphRAG
+- [Changelog](CHANGELOG.md) — what changed between releases
 
 The full index is [docs/README.md](docs/README.md).
 
 ## Roadmap
 
-Shipped today: hybrid dense and BM25 retrieval, RRF, Cohere and MMR rerankers, cited streaming answers, in-memory persistence, Chroma, and Qdrant.
+Shipped today: hybrid dense and BM25 retrieval with pluggable fusion, section-aware readers, chunk context (title and section by default, LLM-written on request), query rewriting with conversation history, Cohere and MMR rerankers, neighbor and section expansion, cited streaming answers, source replacement and deletion, retrieval evaluation, in-memory persistence, Chroma, and Qdrant.
 
-Next, still unshipped: contextual chunk prefixes, multi-query and HyDE transforms, a local HTTP cross-encoder, a self-check query loop, and GraphRAG. Details are on the [roadmap](docs/roadmap.md).
+Next, still unshipped: a local HTTP cross-encoder, a self-check query loop, and GraphRAG. Details are on the [roadmap](docs/roadmap.md).
 
 ## License
 
