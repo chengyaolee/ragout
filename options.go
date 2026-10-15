@@ -31,6 +31,15 @@ func WithTransformTimeout(d time.Duration) EngineOption {
 	return func(e *Engine) { e.transformTimeout = d }
 }
 
+// WithReplaceSource makes Ingest replace a source instead of adding to it: after the new
+// chunks are written, chunks from earlier ingests of the same source that were not
+// rewritten are deleted. Writing first means a failed ingest never loses the previous
+// version. Every configured store must implement SourceDeleter. Off by default, since
+// callers may ingest several streams under one source name.
+func WithReplaceSource() EngineOption {
+	return func(e *Engine) { e.replaceSource = true }
+}
+
 // WithFusion replaces the default RRF(WithRRFK) fusion of retrieval result lists.
 func WithFusion(f FusionStrategy) EngineOption {
 	return func(e *Engine) { e.fusion = f }

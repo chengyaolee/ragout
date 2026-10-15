@@ -105,3 +105,47 @@ func TestQdrantStore_GetChunks(t *testing.T) {
 		t.Errorf("request body = %v", body)
 	}
 }
+
+func TestRemoteDeleteSource(t *testing.T) {
+	ctx := context.Background()
+	var chromaDeleted, qdrantBody map[string]any
+	chroma := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/collections"):
+			json.NewEncoder(w).Encode(map[string]any{"id": "col-1"})
+		case strings.HasSuffix(r.URL.Path, "/get"):
+			json.NewEncoder(w).Encode(map[string]any{"ids": []string{"old", "keep"}})
+		case strings.HasSuffix(r.URL.Path, "/delete"):
+			json.NewDecoder(r.Body).Decode(&chromaDeleted)
+		}
+	}))
+	defer chroma.Close()
+	cs, err := store.NewChromaStore(ctx, chroma.URL, "c")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cs.DeleteSource(ctx, "a.md", []string{"keep"}); err != nil {
+		t.Fatal(err)
+	}
+	if ids, _ := chromaDeleted["ids"].([]any); len(ids) != 1 || ids[0] != "old" {
+		t.Errorf("chroma deleted %v, want [old]", chromaDeleted["ids"])
+	}
+
+	qdrant := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/points/delete") {
+			json.NewDecoder(r.Body).Decode(&qdrantBody)
+		}
+	}))
+	defer qdrant.Close()
+	qs, err := store.NewQdrantStore(ctx, qdrant.URL, "c", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := qs.DeleteSource(ctx, "a.md", []string{"keep"}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(qdrantBody)
+	if !strings.Contains(string(b), `"has_id":["keep"]`) || !strings.Contains(string(b), `"value":"a.md"`) {
+		t.Errorf("qdrant filter = %s", b)
+	}
+}

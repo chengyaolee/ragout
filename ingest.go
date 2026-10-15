@@ -100,6 +100,16 @@ func (e *Engine) Ingest(ctx context.Context, source string, r io.Reader, metadat
 	}
 
 	IngestedChunksTotal.Add(float64(len(allChunks)))
+
+	if e.replaceSource && source != "" {
+		keep := make([]string, len(allChunks))
+		for i, c := range allChunks {
+			keep[i] = c.ID
+		}
+		if err := e.deleteSource(ctx, source, keep); err != nil {
+			return fmt.Errorf("ragout.Ingest: new chunks written, removing stale chunks failed: %w", err)
+		}
+	}
 	return nil
 }
 

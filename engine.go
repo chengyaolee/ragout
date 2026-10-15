@@ -1,7 +1,9 @@
 package ragout
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -13,6 +15,9 @@ var (
 	ErrNoStores     = errors.New("ragout: at least one storage store (vector or index) must be configured")
 	ErrEmptyQuery   = errors.New("ragout: query text cannot be empty")
 	ErrNoResults    = errors.New("ragout: no relevant documents found for query")
+	ErrNoSource     = errors.New("ragout: source must not be empty")
+	// ErrDeleteUnsupported means a configured store does not implement SourceDeleter.
+	ErrDeleteUnsupported = errors.New("ragout: a configured store cannot delete by source")
 )
 
 type Engine struct {
@@ -28,6 +33,7 @@ type Engine struct {
 	expander         Expander       // optional: rewrites final candidates before generation
 	transformer      QueryTransformer
 	transformTimeout time.Duration  // 0: the transformer runs under the query's own deadline
+	replaceSource    bool           // Ingest removes the source's previous chunks after writing
 	fusion           FusionStrategy // default: RRF(rrfK)
 
 	topKRecall       int // Number of candidates recalled from each store (default: 50)
@@ -63,6 +69,55 @@ func NewEngine(options ...EngineOption) (*Engine, error) {
 	if e.vStore != nil && e.embedder == nil {
 		return nil, ErrNilEmbedder
 	}
+	if e.replaceSource {
+		if _, err := e.sourceDeleters(); err != nil {
+			return nil, err
+		}
+	}
 
 	return e, nil
+}
+
+// DeleteSource removes every chunk previously ingested from source, from every
+// configured store. Each store must implement SourceDeleter.
+func (e *Engine) DeleteSource(ctx context.Context, source string) error {
+	return e.deleteSource(ctx, source, nil)
+}
+
+// deleteSource removes source's chunks except keep. Every store is checked before any
+// is touched, so an unsupported store never leaves the others half-deleted.
+func (e *Engine) deleteSource(ctx context.Context, source string, keep []string) error {
+	if source == "" {
+		return ErrNoSource
+	}
+	deleters, err := e.sourceDeleters()
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, d := range deleters {
+		if err := d.DeleteSource(ctx, source, keep); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func (e *Engine) sourceDeleters() ([]SourceDeleter, error) {
+	var stores []any
+	if e.vStore != nil {
+		stores = append(stores, e.vStore)
+	}
+	if e.iStore != nil {
+		stores = append(stores, e.iStore)
+	}
+	out := make([]SourceDeleter, 0, len(stores))
+	for _, s := range stores {
+		d, ok := s.(SourceDeleter)
+		if !ok {
+			return nil, fmt.Errorf("%w: %T", ErrDeleteUnsupported, s)
+		}
+		out = append(out, d)
+	}
+	return out, nil
 }

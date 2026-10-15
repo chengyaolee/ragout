@@ -173,6 +173,13 @@ type HistoryGenerator interface {
 	GenerateIterWithHistory(ctx context.Context, question string, history []Turn, candidates []ScoredChunk) (sources []ScoredChunk, tokens iter.Seq2[string, error])
 }
 
+// SourceDeleter is implemented by stores that can remove a source's chunks: every
+// chunk whose metadata[MetadataSource] equals source, except the IDs in keep.
+// Engine.DeleteSource and WithReplaceSource need it on every configured store.
+type SourceDeleter interface {
+	DeleteSource(ctx context.Context, source string, keep []string) error
+}
+
 // Expander rewrites the final candidates before generation, e.g. widening each hit
 // with its neighboring chunks. It must keep the candidates' order.
 type Expander interface {
