@@ -157,3 +157,34 @@ func (g *OpenAIGenerator) GenerateIter(ctx context.Context, query string, candid
 		}
 	}
 }
+
+// Complete runs a non-streaming chat completion. OpenAI caches long shared prompt
+// prefixes automatically, so prefix is sent first and unchanged to benefit from it.
+func (g *OpenAIGenerator) Complete(ctx context.Context, prefix, prompt string) (string, error) {
+	body, err := json.Marshal(openAIChatRequest{
+		Model:    g.model,
+		Messages: []openAIChatMessage{{Role: "user", Content: joinPrompt(prefix, prompt)}},
+	})
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, g.endpoint, bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+g.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	var out struct {
+		Choices []struct {
+			Message openAIChatMessage `json:"message"`
+		} `json:"choices"`
+	}
+	if err := doJSON(g.httpClient, req, "openai", &out); err != nil {
+		return "", err
+	}
+	if len(out.Choices) == 0 {
+		return "", fmt.Errorf("openai: response has no choices")
+	}
+	return out.Choices[0].Message.Content, nil
+}

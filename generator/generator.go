@@ -2,7 +2,11 @@ package generator
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"iter"
+	"net/http"
 
 	"github.com/chengyaolee/ragout"
 )
@@ -39,4 +43,28 @@ func (mg *MockGenerator) GenerateIter(ctx context.Context, query string, candida
 			}
 		}
 	}
+}
+
+func joinPrompt(prefix, prompt string) string {
+	if prefix == "" {
+		return prompt
+	}
+	return prefix + "\n\n" + prompt
+}
+
+// doJSON sends req and decodes a 200 response body into out.
+func doJSON(c *http.Client, req *http.Request, name string, out any) error {
+	resp, err := c.Do(req)
+	if err != nil {
+		return fmt.Errorf("%s: http request failed: %w", name, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<10))
+		return fmt.Errorf("%s: bad status code %d: %s", name, resp.StatusCode, b)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("%s: decode response: %w", name, err)
+	}
+	return nil
 }

@@ -107,3 +107,25 @@ func (og *OllamaGenerator) GenerateIter(ctx context.Context, query string, candi
 		}
 	}
 }
+
+// Complete runs a non-streaming generation. Ollama reuses its KV cache for an
+// unchanged prompt prefix, so prefix is sent first and unchanged.
+func (og *OllamaGenerator) Complete(ctx context.Context, prefix, prompt string) (string, error) {
+	b, err := json.Marshal(map[string]any{
+		"model":  og.model,
+		"prompt": joinPrompt(prefix, prompt),
+		"stream": false,
+	})
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, og.endpoint, bytes.NewReader(b))
+	if err != nil {
+		return "", err
+	}
+	var out ollamaStreamResponse
+	if err := doJSON(og.httpClient, req, "ollama", &out); err != nil {
+		return "", err
+	}
+	return out.Response, nil
+}

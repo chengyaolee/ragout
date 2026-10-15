@@ -17,7 +17,7 @@ func NewContextBudgeter(counter TokenCounter, maxTokens int) *ContextBudgeter {
 		if tc, err := NewTiktokenCounter("cl100k_base"); err == nil {
 			counter = tc
 		} else {
-			// ponytail: falls back to the char-count heuristic if the BPE vocab
+			// Falls back to the char-count heuristic if the BPE vocab
 			// file can't load (e.g. offline); upgrade by vendoring the encoding.
 			counter = NewHeuristicTokenCounter()
 		}
