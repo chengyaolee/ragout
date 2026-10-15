@@ -95,3 +95,29 @@ func TestBudgeter_LostInMiddleReordering(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildPromptWithHistory(t *testing.T) {
+	cb := NewContextBudgeter(NewHeuristicTokenCounter(), 400) // history gets at most 100 tokens
+	history := []ragout.Turn{
+		{Role: "user", Content: strings.Repeat("old ", 200)}, // too big: dropped with everything before it
+		{Role: "assistant", Content: "Raft uses terms."},
+		{Role: "user", Content: "What about leaders?"},
+	}
+	chunks := []ragout.ScoredChunk{{Chunk: ragout.Chunk{ID: "c1", Content: "Leaders send heartbeats."}}}
+
+	prompt, sources := cb.BuildPromptWithHistory("", "How are leaders elected?", history, chunks)
+	if len(sources) != 1 {
+		t.Fatalf("sources = %d, want the chunk to still fit", len(sources))
+	}
+	if strings.Contains(prompt, "old old") || !strings.Contains(prompt, "assistant: Raft uses terms.\nuser: What about leaders?") {
+		t.Errorf("want only the newest turns that fit, in order:\n%s", prompt)
+	}
+	if strings.Index(prompt, "Conversation so far") > strings.Index(prompt, "Context Information") {
+		t.Errorf("history should precede the context:\n%s", prompt)
+	}
+
+	plain, _ := cb.BuildPrompt("", "How are leaders elected?", chunks)
+	if strings.Contains(plain, "Conversation so far") {
+		t.Errorf("BuildPrompt must not add a history block")
+	}
+}

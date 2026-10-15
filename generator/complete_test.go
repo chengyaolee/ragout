@@ -40,4 +40,22 @@ func TestCompleters(t *testing.T) {
 	if got, err := l.Complete(ctx, "", "ask"); err != nil || got != "yo" {
 		t.Fatalf("ollama = %q, %v", got, err)
 	}
+
+	// History turns are opt-in: the default generator ignores them.
+	var hist = []ragout.Turn{{Role: "user", Content: "EARLIER TURN"}}
+	sse := "data: [DONE]\n"
+	g := NewOpenAIGenerator("k", WithOpenAIHTTPClient(jsonClient(sse, capture)))
+	_, toks := g.GenerateIterWithHistory(ctx, "q", hist, nil)
+	for range toks {
+	}
+	if strings.Contains(body, "EARLIER TURN") {
+		t.Errorf("default generator must not include history")
+	}
+	g = NewOpenAIGenerator("k", WithOpenAIHistoryTurns(2), WithOpenAIHTTPClient(jsonClient(sse, capture)))
+	_, toks = g.GenerateIterWithHistory(ctx, "q", hist, nil)
+	for range toks {
+	}
+	if !strings.Contains(body, "EARLIER TURN") {
+		t.Errorf("WithOpenAIHistoryTurns should include history: %s", body)
+	}
 }

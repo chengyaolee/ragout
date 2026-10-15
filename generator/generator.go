@@ -68,3 +68,8 @@ func doJSON(c *http.Client, req *http.Request, name string, out any) error {
 	}
 	return nil
 }
+
+// lastTurns returns the final n turns of history.
+func lastTurns(history []ragout.Turn, n int) []ragout.Turn {
+	return history[max(0, len(history)-n):]
+}

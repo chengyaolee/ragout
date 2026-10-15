@@ -69,12 +69,24 @@ func (cb *ContextBudgeter) AssembleContextWithBudget(candidates []ragout.ScoredC
 // BuildPrompt combines system prompt, assembled context, and user query within cb.maxTokens.
 // It returns the chunks placed in the prompt, in citation order (sources[i] is cited as [i+1]).
 func (cb *ContextBudgeter) BuildPrompt(systemPrompt string, query string, candidates []ragout.ScoredChunk) (string, []ragout.ScoredChunk) {
+	return cb.BuildPromptWithHistory(systemPrompt, query, nil, candidates)
+}
+
+const historyHeader = "Conversation so far (for reference only; do not cite it):\n"
+
+// BuildPromptWithHistory is BuildPrompt with earlier turns of the conversation placed
+// before the context. History gets at most a quarter of the budget; the newest turns
+// are kept and older ones dropped once the next would not fit.
+func (cb *ContextBudgeter) BuildPromptWithHistory(systemPrompt string, query string, history []ragout.Turn, candidates []ragout.ScoredChunk) (string, []ragout.ScoredChunk) {
 	const templateOverhead = "Context Information:\n\nUser Question:\n\n\nAnswer based strictly on the context above. Cite sources using [1], [2], etc."
 	baseCost := cb.counter.CountTokens(templateOverhead)
 	if systemPrompt != "" {
 		baseCost += cb.counter.CountTokens(systemPrompt + "\n\n")
 	}
 	baseCost += cb.counter.CountTokens(query)
+
+	historyStr := cb.assembleHistory(history, cb.maxTokens/4)
+	baseCost += cb.counter.CountTokens(historyStr)
 
 	remainingBudget := cb.maxTokens - baseCost
 	if remainingBudget < 0 {
@@ -89,6 +101,7 @@ func (cb *ContextBudgeter) BuildPrompt(systemPrompt string, query string, candid
 		prompt.WriteString("\n\n")
 	}
 
+	prompt.WriteString(historyStr)
 	prompt.WriteString("Context Information:\n")
 	prompt.WriteString(contextStr)
 	prompt.WriteString("User Question:\n")
@@ -96,4 +109,31 @@ func (cb *ContextBudgeter) BuildPrompt(systemPrompt string, query string, candid
 	prompt.WriteString("\n\nAnswer based strictly on the context above. Cite sources using [1], [2], etc.")
 
 	return prompt.String(), selected
+}
+
+// assembleHistory renders the newest turns that fit in budget tokens, oldest first.
+func (cb *ContextBudgeter) assembleHistory(history []ragout.Turn, budget int) string {
+	if len(history) == 0 {
+		return ""
+	}
+	used := cb.counter.CountTokens(historyHeader + "\n")
+	start := len(history)
+	for i := len(history) - 1; i >= 0; i-- {
+		cost := cb.counter.CountTokens(history[i].Role + ": " + history[i].Content + "\n")
+		if used+cost > budget {
+			break
+		}
+		used += cost
+		start = i
+	}
+	if start == len(history) {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(historyHeader)
+	for _, t := range history[start:] {
+		fmt.Fprintf(&b, "%s: %s\n", t.Role, t.Content)
+	}
+	b.WriteString("\n")
+	return b.String()
 }

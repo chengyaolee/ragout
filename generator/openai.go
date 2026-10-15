@@ -20,6 +20,7 @@ type OpenAIGenerator struct {
 	endpoint   string
 	httpClient *http.Client
 	budgeter   *ContextBudgeter
+	history    int // earlier turns to include when a query passes history (default 0: none)
 }
 
 type OpenAIOption func(*OpenAIGenerator)
@@ -34,6 +35,12 @@ func WithOpenAIEndpoint(endpoint string) OpenAIOption {
 
 func WithOpenAIBudgeter(b *ContextBudgeter) OpenAIOption {
 	return func(g *OpenAIGenerator) { g.budgeter = b }
+}
+
+// WithOpenAIHistoryTurns lets the generator include up to n earlier turns in the prompt
+// when a query passes ragout.WithHistory. The default, 0, keeps answers single-turn.
+func WithOpenAIHistoryTurns(n int) OpenAIOption {
+	return func(g *OpenAIGenerator) { g.history = max(0, n) }
 }
 
 func WithOpenAIHTTPClient(client *http.Client) OpenAIOption {
@@ -83,7 +90,13 @@ type openAIStreamChunk struct {
 // GenerateIter assembles the prompt (returning the chunks placed in it, in citation
 // order) and streams response tokens using modern Go iter.Seq2.
 func (g *OpenAIGenerator) GenerateIter(ctx context.Context, query string, candidates []ragout.ScoredChunk) ([]ragout.ScoredChunk, iter.Seq2[string, error]) {
-	prompt, sources := g.budgeter.BuildPrompt("You are an accurate RAG assistant.", query, candidates)
+	return g.GenerateIterWithHistory(ctx, query, nil, candidates)
+}
+
+// GenerateIterWithHistory is GenerateIter with up to WithOpenAIHistoryTurns earlier turns
+// in the prompt.
+func (g *OpenAIGenerator) GenerateIterWithHistory(ctx context.Context, query string, history []ragout.Turn, candidates []ragout.ScoredChunk) ([]ragout.ScoredChunk, iter.Seq2[string, error]) {
+	prompt, sources := g.budgeter.BuildPromptWithHistory("You are an accurate RAG assistant.", query, lastTurns(history, g.history), candidates)
 
 	return sources, func(yield func(string, error) bool) {
 		if err := ctx.Err(); err != nil {

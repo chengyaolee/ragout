@@ -17,6 +17,7 @@ type OllamaGenerator struct {
 	model      string
 	httpClient *http.Client
 	budgeter   *ContextBudgeter
+	history    int // earlier turns to include when a query passes history (default 0: none)
 }
 
 type OllamaOption func(*OllamaGenerator)
@@ -35,6 +36,12 @@ func WithOllamaBudgeter(b *ContextBudgeter) OllamaOption {
 			g.budgeter = b
 		}
 	}
+}
+
+// WithOllamaHistoryTurns lets the generator include up to n earlier turns in the prompt
+// when a query passes ragout.WithHistory. The default, 0, keeps answers single-turn.
+func WithOllamaHistoryTurns(n int) OllamaOption {
+	return func(g *OllamaGenerator) { g.history = max(0, n) }
 }
 
 func NewOllamaGenerator(model string, endpoint string, options ...OllamaOption) *OllamaGenerator {
@@ -62,7 +69,13 @@ type ollamaStreamResponse struct {
 }
 
 func (og *OllamaGenerator) GenerateIter(ctx context.Context, query string, candidates []ragout.ScoredChunk) ([]ragout.ScoredChunk, iter.Seq2[string, error]) {
-	prompt, sources := og.budgeter.BuildPrompt("", query, candidates)
+	return og.GenerateIterWithHistory(ctx, query, nil, candidates)
+}
+
+// GenerateIterWithHistory is GenerateIter with up to WithOllamaHistoryTurns earlier turns
+// in the prompt.
+func (og *OllamaGenerator) GenerateIterWithHistory(ctx context.Context, query string, history []ragout.Turn, candidates []ragout.ScoredChunk) ([]ragout.ScoredChunk, iter.Seq2[string, error]) {
+	prompt, sources := og.budgeter.BuildPromptWithHistory("", query, lastTurns(history, og.history), candidates)
 
 	return sources, func(yield func(string, error) bool) {
 		if err := ctx.Err(); err != nil {
