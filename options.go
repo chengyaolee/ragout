@@ -10,7 +10,8 @@ func WithIndexStore(is IndexStore) EngineOption   { return func(e *Engine) { e.i
 func WithReranker(rr Reranker) EngineOption       { return func(e *Engine) { e.reranker = rr } }
 func WithGenerator(g Generator) EngineOption      { return func(e *Engine) { e.generator = g } }
 
-// WithContextualizer enriches each chunk's indexed text at ingest. Nil keeps the default path.
+// WithContextualizer sets how each chunk's indexed text is enriched at ingest. The
+// default is MetadataContext; nil turns enrichment off.
 func WithContextualizer(c Contextualizer) EngineOption {
 	return func(e *Engine) { e.contextualizer = c }
 }

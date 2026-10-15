@@ -41,7 +41,11 @@ func (e *Engine) Ingest(ctx context.Context, source string, r io.Reader, metadat
 	var allChunks []Chunk
 	for _, doc := range docs {
 		if doc.ID == "" {
-			doc.ID = DocumentID(source, doc.Content)
+			key := doc.Content
+			if section, _ := doc.Metadata[MetadataSection].(string); section != "" {
+				key = section + "\x00" + key
+			}
+			doc.ID = DocumentID(source, key)
 		}
 		chunks, err := e.chunker.Chunk(ctx, doc)
 		if err != nil {

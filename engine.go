@@ -21,7 +21,7 @@ type Engine struct {
 	reranker  Reranker
 	generator Generator
 
-	contextualizer Contextualizer // optional: situational context prepended at index time
+	contextualizer Contextualizer // situational context indexed with each chunk (default: MetadataContext)
 
 	topKRecall       int // Number of candidates recalled from each store (default: 50)
 	topNRerank       int // Number of candidates passed to generator (default: 5)
@@ -37,6 +37,7 @@ func NewEngine(options ...EngineOption) (*Engine, error) {
 		rrfK:             60,
 		embedBatchSize:   32,
 		embedConcurrency: 8,
+		contextualizer:   MetadataContext(),
 	}
 
 	for _, opt := range options {

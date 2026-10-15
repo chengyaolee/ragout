@@ -19,8 +19,17 @@ var ErrNilCallback = errors.New("ragout: Stream callback is nil.")
 var ErrDocumentTooLarge = errors.New("ragout: Document exceeds the reader's size limit.")
 var ErrUnsupportedFormat = errors.New("ragout: No reader for this file format.")
 
-// MetadataSource is the metadata key Ingest sets to the document's source name.
-const MetadataSource = "source"
+// Metadata keys with a defined meaning.
+const (
+	// MetadataSource is set by Ingest to the document's source name.
+	MetadataSource = "source"
+	// MetadataTitle is the document title, when a reader can find one (e.g. Markdown
+	// frontmatter or an HTML <title>).
+	MetadataTitle = "title"
+	// MetadataSection is the heading path of the section a document was split from,
+	// e.g. "Financials > Q3". Section-aware readers emit one Document per section.
+	MetadataSection = "section"
+)
 
 type Document struct {
 	ID       string
@@ -103,6 +112,7 @@ type Completer interface {
 }
 
 // Contextualizer returns one situational-context string per chunk of doc, in order.
+// The engine defaults to MetadataContext.
 type Contextualizer interface {
 	Contextualize(ctx context.Context, doc Document, chunks []Chunk) ([]string, error)
 }

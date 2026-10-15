@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/chengyaolee/ragout"
@@ -58,28 +59,23 @@ func (dr *DocxReader) Read(ctx context.Context, r io.Reader, metadata map[string
 		return nil, err
 	}
 
-	text, err := extractDocxText(xmlBytes)
-	if err != nil {
+	s := newSections(ragout.CloneMetadata(metadata))
+	if err := extractDocxText(xmlBytes, s); err != nil {
 		return nil, fmt.Errorf("reader: docx: %w", err)
 	}
-
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return nil, ragout.ErrEmptyDocument
-	}
-
-	return []ragout.Document{{
-		Content:  text,
-		Metadata: ragout.CloneMetadata(metadata),
-	}}, nil
+	return s.done()
 }
 
-// extractDocxText walks word/document.xml's token stream, keeping text runs (w:t)
-// and turning paragraph (w:p) and line-break (w:br) boundaries into newlines.
-func extractDocxText(xmlBytes []byte) (string, error) {
+// extractDocxText walks word/document.xml's token stream, keeping text runs (w:t),
+// turning line breaks (w:br) into newlines, and sending each paragraph (w:p) to s as
+// a heading or body text.
+// Headings are found by HeadingN style IDs or an inline outline level; a
+// localized heading style defined only in styles.xml reads as body text.
+func extractDocxText(xmlBytes []byte, s *sections) error {
 	dec := xml.NewDecoder(bytes.NewReader(xmlBytes))
 	var b strings.Builder
 	inText := false
+	level := 0
 
 	for {
 		tok, err := dec.Token()
@@ -87,7 +83,7 @@ func extractDocxText(xmlBytes []byte) (string, error) {
 			break
 		}
 		if err != nil {
-			return "", err
+			return err
 		}
 
 		switch t := tok.(type) {
@@ -99,13 +95,25 @@ func extractDocxText(xmlBytes []byte) (string, error) {
 				b.WriteByte('\n')
 			case "tab":
 				b.WriteByte('\t')
+			case "pStyle":
+				level = max(level, headingLevel(attr(t, "val")))
+			case "outlineLvl":
+				if n, err := strconv.Atoi(attr(t, "val")); err == nil && n < 9 {
+					level = max(level, n+1)
+				}
 			}
 		case xml.EndElement:
 			switch t.Name.Local {
 			case "t":
 				inText = false
 			case "p":
-				b.WriteByte('\n')
+				if text := strings.TrimSpace(b.String()); level > 0 && text != "" {
+					s.heading(level, text, text)
+				} else {
+					s.text(b.String() + "\n")
+				}
+				b.Reset()
+				level = 0
 			}
 		case xml.CharData:
 			if inText {
@@ -114,5 +122,25 @@ func extractDocxText(xmlBytes []byte) (string, error) {
 		}
 	}
 
-	return b.String(), nil
+	s.text(b.String())
+	return nil
+}
+
+// headingLevel maps style IDs like "Heading2" or "heading 2" to 2, and anything else to 0.
+func headingLevel(style string) int {
+	style = strings.ToLower(strings.ReplaceAll(style, " ", ""))
+	n, err := strconv.Atoi(strings.TrimPrefix(style, "heading"))
+	if !strings.HasPrefix(style, "heading") || err != nil || n < 1 || n > 9 {
+		return 0
+	}
+	return n
+}
+
+func attr(e xml.StartElement, local string) string {
+	for _, a := range e.Attr {
+		if a.Name.Local == local {
+			return a.Value
+		}
+	}
+	return ""
 }

@@ -58,3 +58,50 @@ func newChunkerForTest(t *testing.T) ragout.Chunker {
 	}
 	return ch
 }
+
+func TestEngine_DefaultMetadataContext(t *testing.T) {
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name string
+		opts []ragout.EngineOption
+		hits int
+	}{
+		{"default", nil, 1},
+		{"disabled", []ragout.EngineOption{ragout.WithContextualizer(nil)}, 0},
+	} {
+		idx := newBM25ForTest()
+		opts := append([]ragout.EngineOption{
+			ragout.WithReader(newTextReaderForTest()),
+			ragout.WithChunker(newChunkerForTest(t)),
+			ragout.WithIndexStore(idx),
+		}, tc.opts...)
+		e, err := ragout.NewEngine(opts...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := e.Ingest(ctx, "dir/quarterly-earnings.txt", strings.NewReader("Revenue grew 24 percent."), nil); err != nil {
+			t.Fatal(err)
+		}
+		// The file name only reaches the index through the breadcrumb.
+		got, _ := idx.SearchSparse(ctx, "earnings", 5, nil)
+		if len(got) != tc.hits {
+			t.Errorf("%s: SearchSparse(earnings) = %d hits, want %d", tc.name, len(got), tc.hits)
+		}
+	}
+}
+
+func TestBreadcrumb(t *testing.T) {
+	for _, tc := range []struct {
+		meta map[string]any
+		want string
+	}{
+		{map[string]any{ragout.MetadataTitle: "Report", ragout.MetadataSection: "A > B", ragout.MetadataSource: "x.md"}, "Report > A > B"},
+		{map[string]any{ragout.MetadataSource: "docs/q3-notes.md", ragout.MetadataSection: "Risks"}, "q3-notes > Risks"},
+		{map[string]any{ragout.MetadataSection: "Risks"}, "Risks"},
+		{nil, ""},
+	} {
+		if got := ragout.Breadcrumb(tc.meta); got != tc.want {
+			t.Errorf("Breadcrumb(%v) = %q, want %q", tc.meta, got, tc.want)
+		}
+	}
+}

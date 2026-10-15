@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"io"
+	"regexp"
 	"strings"
 
 	"github.com/chengyaolee/ragout"
@@ -65,13 +66,32 @@ func (mr *MarkdownReader) Read(ctx context.Context, r io.Reader, metadata map[st
 		}
 	}
 
-	text := strings.TrimSpace(content)
-	if text == "" {
-		return nil, ragout.ErrEmptyDocument
-	}
+	return splitMarkdown(content, meta)
+}
 
-	return []ragout.Document{{
-		Content:  text,
-		Metadata: meta,
-	}}, nil
+var atxHeading = regexp.MustCompile(`^ {0,3}(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$`)
+
+// splitMarkdown emits one document per ATX heading section, skipping fenced code.
+// Setext headings (underlined with === or ---) are treated as body text.
+func splitMarkdown(content string, meta map[string]any) ([]ragout.Document, error) {
+	s := newSections(meta)
+	fence := ""
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case fence != "":
+			if strings.HasPrefix(trimmed, fence) {
+				fence = ""
+			}
+		case strings.HasPrefix(trimmed, "```"), strings.HasPrefix(trimmed, "~~~"):
+			fence = trimmed[:3]
+		default:
+			if m := atxHeading.FindStringSubmatch(line); m != nil {
+				s.heading(len(m[1]), m[2], line)
+				continue
+			}
+		}
+		s.text(line + "\n")
+	}
+	return s.done()
 }
