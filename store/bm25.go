@@ -136,6 +136,7 @@ func (idx *BM25Index) Index(ctx context.Context, chunks []ragout.Chunk) error {
 			DocumentID: chunk.DocumentID,
 			Index:      chunk.Index,
 			Content:    chunk.Content,
+			Context:    chunk.Context, // kept so Load re-indexes the same text
 			Embedding:  chunk.Embedding,
 			Metadata:   ragout.CloneMetadata(chunk.Metadata),
 		}

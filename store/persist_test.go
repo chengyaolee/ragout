@@ -178,3 +178,23 @@ func TestVectorStore_Delete(t *testing.T) {
 		t.Fatalf("hits after delete = %+v, want only chunk-2", hits)
 	}
 }
+
+func TestBM25Index_SaveLoadKeepsContext(t *testing.T) {
+	ctx := context.Background()
+	idx := store.NewBM25Index()
+	if err := idx.Index(ctx, []ragout.Chunk{{ID: "c1", Content: "Revenue grew 24 percent.", Context: "Zorblax annual report"}}); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := idx.Save(&buf); err != nil {
+		t.Fatal(err)
+	}
+	restored := store.NewBM25Index()
+	if err := restored.Load(&buf); err != nil {
+		t.Fatal(err)
+	}
+	got, err := restored.SearchSparse(ctx, "zorblax", 5, nil)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("context terms lost after Load: %v, %v", got, err)
+	}
+}

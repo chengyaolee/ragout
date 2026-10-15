@@ -43,6 +43,7 @@ func (vs *VectorStore) Upsert(ctx context.Context, chunks []ragout.Chunk) error 
 			DocumentID: chunk.DocumentID,
 			Index:      chunk.Index,
 			Content:    chunk.Content,
+			Context:    chunk.Context,
 			Embedding:  chunk.Embedding,
 			Metadata:   ragout.CloneMetadata(chunk.Metadata),
 		}
