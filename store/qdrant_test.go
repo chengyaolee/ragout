@@ -107,12 +107,14 @@ func TestQdrantStore_Delete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := qs.Delete(ctx, []string{"chunk-1", "chunk-2"}); err != nil {
+	// Qdrant rejects a request holding any non-UUID ID, so such IDs are dropped.
+	a, b := ragout.ChunkID("doc", 0), ragout.ChunkID("doc", 1)
+	if err := qs.Delete(ctx, []string{a, "not-a-uuid", b}); err != nil {
 		t.Fatalf("Delete: %v", err)
 	}
 	points, _ := gotDeleteBody["points"].([]any)
-	if len(points) != 2 {
-		t.Fatalf("delete body points = %v, want 2 entries", gotDeleteBody["points"])
+	if len(points) != 2 || points[0] != a || points[1] != b {
+		t.Fatalf("delete body points = %v, want the 2 UUIDs", gotDeleteBody["points"])
 	}
 }
 

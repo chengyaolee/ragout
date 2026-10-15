@@ -72,6 +72,7 @@ func TestChromaStore_GetChunks(t *testing.T) {
 }
 
 func TestQdrantStore_GetChunks(t *testing.T) {
+	p1 := ragout.ChunkID("d1", 2)
 	var body map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -80,7 +81,7 @@ func TestQdrantStore_GetChunks(t *testing.T) {
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/collections/c/points"):
 			json.NewDecoder(r.Body).Decode(&body)
 			json.NewEncoder(w).Encode(map[string]any{"result": []map[string]any{{
-				"id":      "p1",
+				"id":      p1,
 				"payload": map[string]any{"ragout_content": "hello", "ragout_document_id": "d1", "ragout_index": float64(2)},
 			}}})
 		default:
@@ -94,15 +95,15 @@ func TestQdrantStore_GetChunks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := qs.GetChunks(ctx, []string{"p1"})
+	got, err := qs.GetChunks(ctx, []string{p1, "not-a-uuid"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[0].Content != "hello" || got[0].DocumentID != "d1" || got[0].Index != 2 {
 		t.Fatalf("GetChunks = %+v", got)
 	}
-	if body["with_payload"] != true {
-		t.Errorf("request body = %v", body)
+	if ids, _ := body["ids"].([]any); body["with_payload"] != true || len(ids) != 1 || ids[0] != p1 {
+		t.Errorf("request body = %v, want only the UUID", body)
 	}
 }
 
@@ -141,11 +142,12 @@ func TestRemoteDeleteSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := qs.DeleteSource(ctx, "a.md", []string{"keep"}); err != nil {
+	keep := ragout.ChunkID("d", 0)
+	if err := qs.DeleteSource(ctx, "a.md", []string{keep, "not-a-uuid"}); err != nil {
 		t.Fatal(err)
 	}
 	b, _ := json.Marshal(qdrantBody)
-	if !strings.Contains(string(b), `"has_id":["keep"]`) || !strings.Contains(string(b), `"value":"a.md"`) {
+	if !strings.Contains(string(b), `"has_id":["`+keep+`"]`) || !strings.Contains(string(b), `"value":"a.md"`) {
 		t.Errorf("qdrant filter = %s", b)
 	}
 }

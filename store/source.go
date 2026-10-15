@@ -74,7 +74,7 @@ func (qs *QdrantStore) DeleteSource(ctx context.Context, source string, keep []s
 	filter := map[string]any{
 		"must": []map[string]any{{"key": ragout.MetadataSource, "match": map[string]any{"value": source}}},
 	}
-	if len(keep) > 0 {
+	if keep = qdrantPointIDs(keep); len(keep) > 0 {
 		filter["must_not"] = []map[string]any{{"has_id": keep}}
 	}
 	url := fmt.Sprintf("%s/collections/%s/points/delete?wait=true", qs.baseURL, qs.collection)

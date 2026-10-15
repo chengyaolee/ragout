@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/chengyaolee/ragout"
+	"github.com/google/uuid"
 )
 
 // Reserved Qdrant payload keys used to recover chunk fields that have no dedicated
@@ -152,6 +153,10 @@ func (qs *QdrantStore) Delete(ctx context.Context, ids []string) error {
 	if len(ids) == 0 {
 		return nil
 	}
+	ids = qdrantPointIDs(ids)
+	if len(ids) == 0 {
+		return nil
+	}
 	url := fmt.Sprintf("%s/collections/%s/points/delete?wait=true", qs.baseURL, qs.collection)
 	if err := qs.do(ctx, http.MethodPost, url, map[string]any{"points": ids}, nil); err != nil {
 		return fmt.Errorf("qdrant: delete: %w", err)
@@ -215,7 +220,7 @@ func (qs *QdrantStore) GetChunks(ctx context.Context, ids []string) ([]ragout.Ch
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if len(ids) == 0 {
+	if ids = qdrantPointIDs(ids); len(ids) == 0 {
 		return []ragout.Chunk{}, nil
 	}
 	var res struct {
@@ -325,6 +330,19 @@ func toAnySlice(v any) []any {
 	out := make([]any, rv.Len())
 	for i := range out {
 		out[i] = rv.Index(i).Interface()
+	}
+	return out
+}
+
+// qdrantPointIDs keeps the IDs a Qdrant point can have. Qdrant rejects a whole request
+// if any ID is not a UUID, and ragout writes string IDs, so anything else cannot be
+// stored and is skipped like any other unknown ID.
+func qdrantPointIDs(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, err := uuid.Parse(id); err == nil {
+			out = append(out, id)
+		}
 	}
 	return out
 }
