@@ -22,6 +22,7 @@ type Engine struct {
 	generator Generator
 
 	contextualizer Contextualizer // situational context indexed with each chunk (default: MetadataContext)
+	expander       Expander       // optional: rewrites final candidates before generation
 
 	topKRecall       int // Number of candidates recalled from each store (default: 50)
 	topNRerank       int // Number of candidates passed to generator (default: 5)

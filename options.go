@@ -15,6 +15,11 @@ func WithGenerator(g Generator) EngineOption      { return func(e *Engine) { e.g
 func WithContextualizer(c Contextualizer) EngineOption {
 	return func(e *Engine) { e.contextualizer = c }
 }
+
+// WithExpander rewrites the final candidates before generation (e.g. expand.Neighbors).
+func WithExpander(x Expander) EngineOption {
+	return func(e *Engine) { e.expander = x }
+}
 func WithTopKRecall(k int) EngineOption {
 	return func(e *Engine) {
 		if k > 0 {

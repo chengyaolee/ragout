@@ -7,6 +7,7 @@ import (
 
 	"github.com/chengyaolee/ragout"
 	"github.com/chengyaolee/ragout/chunker"
+	"github.com/chengyaolee/ragout/generator"
 	"github.com/chengyaolee/ragout/reader"
 	"github.com/chengyaolee/ragout/store"
 )
@@ -103,5 +104,38 @@ func TestBreadcrumb(t *testing.T) {
 		if got := ragout.Breadcrumb(tc.meta); got != tc.want {
 			t.Errorf("Breadcrumb(%v) = %q, want %q", tc.meta, got, tc.want)
 		}
+	}
+}
+
+type upperExpander struct{}
+
+func (upperExpander) Expand(_ context.Context, hits []ragout.ScoredChunk) ([]ragout.ScoredChunk, error) {
+	for i := range hits {
+		hits[i].Chunk.Content = strings.ToUpper(hits[i].Chunk.Content)
+	}
+	return hits, nil
+}
+
+func TestEngine_ExpanderRunsBeforeGeneration(t *testing.T) {
+	ctx := context.Background()
+	e, err := ragout.NewEngine(
+		ragout.WithReader(newTextReaderForTest()),
+		ragout.WithChunker(newChunkerForTest(t)),
+		ragout.WithIndexStore(newBM25ForTest()),
+		ragout.WithGenerator(generator.NewMockGenerator(nil)),
+		ragout.WithExpander(upperExpander{}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Ingest(ctx, "a.txt", strings.NewReader("raft elects a leader"), nil); err != nil {
+		t.Fatal(err)
+	}
+	ans, err := e.Query(ctx, "raft")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ans.Sources) != 1 || ans.Sources[0].Chunk.Content != "RAFT ELECTS A LEADER" {
+		t.Fatalf("Sources = %+v, want the expanded chunk", ans.Sources)
 	}
 }

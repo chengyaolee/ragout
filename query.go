@@ -89,6 +89,20 @@ func (e *Engine) QueryIter(ctx context.Context, query string, opts ...QueryOptio
 		return fail(ErrNoResults)
 	}
 
+	if e.expander != nil {
+		expStart := time.Now()
+		expCtx, expSpan := startSpan(ctx, "query.expand",
+			attribute.String("expander_type", fmt.Sprintf("%T", e.expander)),
+		)
+		retrieved, err = e.expander.Expand(expCtx, retrieved)
+		QueryDuration.WithLabelValues("expand").Observe(time.Since(expStart).Seconds())
+		endSpan(expSpan, err)
+		if err != nil {
+			return fail(fmt.Errorf("expansion failed: %w", err))
+		}
+		answer.Retrieved = retrieved
+	}
+
 	genStart := time.Now()
 	genCtx, genSpan := startSpan(ctx, "query.generation")
 

@@ -221,24 +221,9 @@ func (cs *ChromaStore) SearchDense(ctx context.Context, queryVector []float32, t
 	ids := res.IDs[0]
 	scored := make([]ragout.ScoredChunk, 0, len(ids))
 	for i, id := range ids {
-		chunk := ragout.Chunk{ID: id, Metadata: map[string]any{}}
-		if i < len(res.Documents) && len(res.Documents) > 0 && i < len(res.Documents[0]) {
-			chunk.Content = res.Documents[0][i]
-		}
-		if len(res.Embeddings) > 0 && i < len(res.Embeddings[0]) {
-			chunk.Embedding = res.Embeddings[0][i]
-		}
-		if len(res.Metadatas) > 0 && i < len(res.Metadatas[0]) && res.Metadatas[0][i] != nil {
-			meta := res.Metadatas[0][i]
-			if docID, ok := meta[chromaMetaDocumentID].(string); ok {
-				chunk.DocumentID = docID
-				delete(meta, chromaMetaDocumentID)
-			}
-			if idx, ok := meta[chromaMetaIndex].(float64); ok {
-				chunk.Index = int(idx)
-				delete(meta, chromaMetaIndex)
-			}
-			chunk.Metadata = meta
+		chunk := chromaChunk(id, i, at(res.Documents), at(res.Metadatas))
+		if emb := at(res.Embeddings); i < len(emb) {
+			chunk.Embedding = emb[i]
 		}
 
 		var dist float64
@@ -254,6 +239,61 @@ func (cs *ChromaStore) SearchDense(ctx context.Context, queryVector []float32, t
 	}
 
 	return scored, nil
+}
+
+// GetChunks fetches chunks by ID. IDs not in the collection are skipped.
+func (cs *ChromaStore) GetChunks(ctx context.Context, ids []string) ([]ragout.Chunk, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []ragout.Chunk{}, nil
+	}
+	payload := map[string]any{"ids": ids, "include": []string{"documents", "metadatas"}}
+	var res struct {
+		IDs       []string         `json:"ids"`
+		Documents []string         `json:"documents"`
+		Metadatas []map[string]any `json:"metadatas"`
+	}
+	url := fmt.Sprintf("%s/%s/get", cs.collectionsURL(), cs.collectionID)
+	if err := cs.do(ctx, http.MethodPost, url, payload, &res); err != nil {
+		return nil, fmt.Errorf("chroma: get: %w", err)
+	}
+	out := make([]ragout.Chunk, len(res.IDs))
+	for i, id := range res.IDs {
+		out[i] = chromaChunk(id, i, res.Documents, res.Metadatas)
+	}
+	return out, nil
+}
+
+// chromaChunk decodes record i of a Chroma result, moving ragout's bookkeeping
+// fields out of the metadata.
+func chromaChunk(id string, i int, docs []string, metas []map[string]any) ragout.Chunk {
+	chunk := ragout.Chunk{ID: id, Metadata: map[string]any{}}
+	if i < len(docs) {
+		chunk.Content = docs[i]
+	}
+	if i < len(metas) && metas[i] != nil {
+		meta := metas[i]
+		if docID, ok := meta[chromaMetaDocumentID].(string); ok {
+			chunk.DocumentID = docID
+			delete(meta, chromaMetaDocumentID)
+		}
+		if idx, ok := meta[chromaMetaIndex].(float64); ok {
+			chunk.Index = int(idx)
+			delete(meta, chromaMetaIndex)
+		}
+		chunk.Metadata = meta
+	}
+	return chunk
+}
+
+// at returns the first row of a batched (one list per query) Chroma field.
+func at[T any](rows [][]T) []T {
+	if len(rows) == 0 {
+		return nil
+	}
+	return rows[0]
 }
 
 // chromaWhere translates a ragout metadata filter (matches ragout's $eq/$ne/$in/$nin/

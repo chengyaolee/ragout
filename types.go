@@ -117,6 +117,18 @@ type Contextualizer interface {
 	Contextualize(ctx context.Context, doc Document, chunks []Chunk) ([]string, error)
 }
 
+// Expander rewrites the final candidates before generation, e.g. widening each hit
+// with its neighboring chunks. It must keep the candidates' order.
+type Expander interface {
+	Expand(ctx context.Context, candidates []ScoredChunk) ([]ScoredChunk, error)
+}
+
+// ChunkGetter is implemented by stores that can fetch chunks by ID. IDs that are not
+// stored are skipped, not reported as errors.
+type ChunkGetter interface {
+	GetChunks(ctx context.Context, ids []string) ([]Chunk, error)
+}
+
 type Generator interface {
 	// GenerateIter builds the prompt and returns the chunks placed in it in citation order
 	// (sources[i] is cited as [i+1]), plus a lazy token stream.

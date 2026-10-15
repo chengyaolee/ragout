@@ -197,25 +197,8 @@ func (qs *QdrantStore) SearchDense(ctx context.Context, queryVector []float32, t
 
 	scored := make([]ragout.ScoredChunk, 0, len(res.Result.Points))
 	for _, p := range res.Result.Points {
-		id := fmt.Sprintf("%v", p.ID)
-		meta := p.Payload
-		if meta == nil {
-			meta = map[string]any{}
-		}
-		chunk := ragout.Chunk{ID: id, Embedding: p.Vector}
-		if content, ok := meta[qdrantPayloadContent].(string); ok {
-			chunk.Content = content
-			delete(meta, qdrantPayloadContent)
-		}
-		if docID, ok := meta[qdrantPayloadDocumentID].(string); ok {
-			chunk.DocumentID = docID
-			delete(meta, qdrantPayloadDocumentID)
-		}
-		if idx, ok := meta[qdrantPayloadIndex].(float64); ok {
-			chunk.Index = int(idx)
-			delete(meta, qdrantPayloadIndex)
-		}
-		chunk.Metadata = meta
+		chunk := qdrantChunk(p.ID, p.Payload)
+		chunk.Embedding = p.Vector
 
 		scored = append(scored, ragout.ScoredChunk{
 			Chunk:      chunk,
@@ -225,6 +208,53 @@ func (qs *QdrantStore) SearchDense(ctx context.Context, queryVector []float32, t
 	}
 
 	return scored, nil
+}
+
+// GetChunks fetches points by ID. IDs not in the collection are skipped.
+func (qs *QdrantStore) GetChunks(ctx context.Context, ids []string) ([]ragout.Chunk, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []ragout.Chunk{}, nil
+	}
+	var res struct {
+		Result []struct {
+			ID      any            `json:"id"`
+			Payload map[string]any `json:"payload"`
+		} `json:"result"`
+	}
+	url := fmt.Sprintf("%s/collections/%s/points", qs.baseURL, qs.collection)
+	if err := qs.do(ctx, http.MethodPost, url, map[string]any{"ids": ids, "with_payload": true}, &res); err != nil {
+		return nil, fmt.Errorf("qdrant: get: %w", err)
+	}
+	out := make([]ragout.Chunk, len(res.Result))
+	for i, p := range res.Result {
+		out[i] = qdrantChunk(p.ID, p.Payload)
+	}
+	return out, nil
+}
+
+// qdrantChunk decodes a point, moving ragout's bookkeeping fields out of the payload.
+func qdrantChunk(id any, meta map[string]any) ragout.Chunk {
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	chunk := ragout.Chunk{ID: fmt.Sprintf("%v", id)}
+	if content, ok := meta[qdrantPayloadContent].(string); ok {
+		chunk.Content = content
+		delete(meta, qdrantPayloadContent)
+	}
+	if docID, ok := meta[qdrantPayloadDocumentID].(string); ok {
+		chunk.DocumentID = docID
+		delete(meta, qdrantPayloadDocumentID)
+	}
+	if idx, ok := meta[qdrantPayloadIndex].(float64); ok {
+		chunk.Index = int(idx)
+		delete(meta, qdrantPayloadIndex)
+	}
+	chunk.Metadata = meta
+	return chunk
 }
 
 // qdrantFilter translates a ragout metadata filter into a Qdrant filter payload.
