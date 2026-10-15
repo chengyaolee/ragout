@@ -18,6 +18,7 @@ type OllamaGenerator struct {
 	httpClient *http.Client
 	budgeter   *ContextBudgeter
 	history    int // earlier turns to include when a query passes history (default 0: none)
+	numCtx     int // context window sent as options.num_ctx; 0 leaves Ollama's default
 }
 
 type OllamaOption func(*OllamaGenerator)
@@ -42,6 +43,13 @@ func WithOllamaBudgeter(b *ContextBudgeter) OllamaOption {
 // when a query passes ragout.WithHistory. The default, 0, keeps answers single-turn.
 func WithOllamaHistoryTurns(n int) OllamaOption {
 	return func(g *OllamaGenerator) { g.history = max(0, n) }
+}
+
+// WithOllamaNumCtx sets the context window (Ollama's num_ctx) for every request.
+// Ollama truncates a prompt longer than its window without an error, so set this at
+// least as large as the budgeter's token limit plus room for the answer.
+func WithOllamaNumCtx(n int) OllamaOption {
+	return func(g *OllamaGenerator) { g.numCtx = max(0, n) }
 }
 
 func NewOllamaGenerator(model string, endpoint string, options ...OllamaOption) *OllamaGenerator {
@@ -83,11 +91,11 @@ func (og *OllamaGenerator) GenerateIterWithHistory(ctx context.Context, query st
 			return
 		}
 
-		payload := map[string]any{
+		payload := og.payload(map[string]any{
 			"model":  og.model,
 			"prompt": prompt,
 			"stream": true,
-		}
+		})
 		b, _ := json.Marshal(payload)
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, og.endpoint, bytes.NewReader(b))
@@ -124,11 +132,11 @@ func (og *OllamaGenerator) GenerateIterWithHistory(ctx context.Context, query st
 // Complete runs a non-streaming generation. Ollama reuses its KV cache for an
 // unchanged prompt prefix, so prefix is sent first and unchanged.
 func (og *OllamaGenerator) Complete(ctx context.Context, prefix, prompt string) (string, error) {
-	b, err := json.Marshal(map[string]any{
+	b, err := json.Marshal(og.payload(map[string]any{
 		"model":  og.model,
 		"prompt": joinPrompt(prefix, prompt),
 		"stream": false,
-	})
+	}))
 	if err != nil {
 		return "", err
 	}
@@ -141,4 +149,12 @@ func (og *OllamaGenerator) Complete(ctx context.Context, prefix, prompt string) 
 		return "", err
 	}
 	return out.Response, nil
+}
+
+// payload adds request-wide options to an Ollama request body.
+func (og *OllamaGenerator) payload(p map[string]any) map[string]any {
+	if og.numCtx > 0 {
+		p["options"] = map[string]any{"num_ctx": og.numCtx}
+	}
+	return p
 }

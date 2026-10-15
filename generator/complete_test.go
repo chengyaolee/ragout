@@ -58,4 +58,16 @@ func TestCompleters(t *testing.T) {
 	if !strings.Contains(body, "EARLIER TURN") {
 		t.Errorf("WithOpenAIHistoryTurns should include history: %s", body)
 	}
+
+	// num_ctx is only sent when configured.
+	l = NewOllamaGenerator("m", "", WithOllamaHTTPClient(jsonClient(`{"response":"yo"}`, capture)))
+	l.Complete(ctx, "", "ask")
+	if strings.Contains(body, "num_ctx") {
+		t.Errorf("default request must not set num_ctx: %s", body)
+	}
+	l = NewOllamaGenerator("m", "", WithOllamaNumCtx(8192), WithOllamaHTTPClient(jsonClient(`{"response":"yo"}`, capture)))
+	l.Complete(ctx, "", "ask")
+	if !strings.Contains(body, `"num_ctx":8192`) {
+		t.Errorf("num_ctx missing: %s", body)
+	}
 }
