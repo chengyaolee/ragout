@@ -33,8 +33,20 @@ type Chunk struct {
 	DocumentID string
 	Index      int
 	Content    string
-	Embedding  []float32 `json:"embedding,omitempty"`
-	Metadata   map[string]any
+	// Context is optional situational text from a Contextualizer. It is indexed
+	// (embedded and BM25-tokenized) with Content but never shown to the generator,
+	// so citations and prompts keep the original chunk text.
+	Context   string    `json:"context,omitempty"`
+	Embedding []float32 `json:"embedding,omitempty"`
+	Metadata  map[string]any
+}
+
+// IndexText is the text embedders and the BM25 index see for this chunk.
+func (c Chunk) IndexText() string {
+	if c.Context == "" {
+		return c.Content
+	}
+	return c.Context + "\n\n" + c.Content
 }
 
 type ScoredChunk struct {
@@ -81,6 +93,18 @@ type IndexStore interface {
 
 type Reranker interface {
 	Rerank(ctx context.Context, query string, candidates []ScoredChunk, topN int) ([]ScoredChunk, error)
+}
+
+// Completer runs a one-shot, non-streaming LLM call. prefix is the stable part shared
+// across many calls (e.g. a whole document) and prompt is the part that varies; keep
+// prefix first and identical so providers can cache it. Either may be empty.
+type Completer interface {
+	Complete(ctx context.Context, prefix, prompt string) (string, error)
+}
+
+// Contextualizer returns one situational-context string per chunk of doc, in order.
+type Contextualizer interface {
+	Contextualize(ctx context.Context, doc Document, chunks []Chunk) ([]string, error)
 }
 
 type Generator interface {

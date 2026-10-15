@@ -21,6 +21,8 @@ type Engine struct {
 	reranker  Reranker
 	generator Generator
 
+	contextualizer Contextualizer // optional: situational context prepended at index time
+
 	topKRecall       int // Number of candidates recalled from each store (default: 50)
 	topNRerank       int // Number of candidates passed to generator (default: 5)
 	rrfK             int // RRF smoothing denominator constant (default: 60)

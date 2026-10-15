@@ -47,6 +47,18 @@ func (e *Engine) Ingest(ctx context.Context, source string, r io.Reader, metadat
 		if err != nil {
 			return fmt.Errorf("ragout.Ingest: chunk error: %w", err)
 		}
+		if e.contextualizer != nil && len(chunks) > 0 {
+			ctxs, err := e.contextualizer.Contextualize(ctx, doc, chunks)
+			if err != nil {
+				return fmt.Errorf("ragout.Ingest: contextualize error: %w", err)
+			}
+			if len(ctxs) != len(chunks) {
+				return fmt.Errorf("ragout.Ingest: contextualizer returned %d contexts for %d chunks", len(ctxs), len(chunks))
+			}
+			for i := range chunks {
+				chunks[i].Context = ctxs[i]
+			}
+		}
 		allChunks = append(allChunks, chunks...)
 	}
 	if len(allChunks) == 0 {

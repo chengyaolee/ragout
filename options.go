@@ -9,6 +9,11 @@ func WithVectorStore(vs VectorStore) EngineOption { return func(e *Engine) { e.v
 func WithIndexStore(is IndexStore) EngineOption   { return func(e *Engine) { e.iStore = is } }
 func WithReranker(rr Reranker) EngineOption       { return func(e *Engine) { e.reranker = rr } }
 func WithGenerator(g Generator) EngineOption      { return func(e *Engine) { e.generator = g } }
+
+// WithContextualizer enriches each chunk's indexed text at ingest. Nil keeps the default path.
+func WithContextualizer(c Contextualizer) EngineOption {
+	return func(e *Engine) { e.contextualizer = c }
+}
 func WithTopKRecall(k int) EngineOption {
 	return func(e *Engine) {
 		if k > 0 {

@@ -48,7 +48,7 @@ func embedConcurrent(ctx context.Context, em Embedder, chunks []Chunk, maxWorker
 			for batch := range batches {
 				texts := make([]string, len(batch))
 				for j, chunk := range batch {
-					texts[j] = chunk.Content
+					texts[j] = chunk.IndexText()
 				}
 				embeddings, err := em.EmbedBatch(ctx, texts)
 				if err != nil {

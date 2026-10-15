@@ -112,7 +112,7 @@ func (idx *BM25Index) Index(ctx context.Context, chunks []ragout.Chunk) error {
 			idx.totalDocuments++
 		}
 
-		tokens := idx.tokenize(chunk.Content)
+		tokens := idx.tokenize(chunk.IndexText())
 		docLen := len(tokens)
 		idx.documentLengths[chunk.ID] = docLen
 		idx.totalTokens += docLen
