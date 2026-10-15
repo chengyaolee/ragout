@@ -49,7 +49,7 @@ type cohereRerankRequest struct {
 	Model     string   `json:"model"`
 	Query     string   `json:"query"`
 	Documents []string `json:"documents"`
-	TopN      int      `json:"topN, omitempty"`
+	TopN      int      `json:"top_n,omitempty"`
 }
 
 type cohereRerankResponse struct {
