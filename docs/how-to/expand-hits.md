@@ -34,7 +34,7 @@ Wider hits cost prompt tokens on every query. The token budget still applies, so
 ## Requirements and limits
 
 - **Store:** pass a store that implements `ragout.ChunkGetter`. The in-memory vector store, BM25, Chroma, and Qdrant all do.
-- **Chunker:** neighbors are found by chunk index, so they need consecutive indexes. The character chunker numbers chunks `0, 1, 2, ...`. The token chunker uses token offsets, so expansion finds no neighbors with it.
+- **Chunker:** neighbors are found at chunk index `± 1`, so chunks must be numbered `0, 1, 2, ...` within a document. Both built-in chunkers do. A custom chunker that numbers chunks another way gets no expansion.
 - **Overlap:** if the chunker overlaps chunks, the overlapping text appears twice where neighbors join.
 
 ## Write your own

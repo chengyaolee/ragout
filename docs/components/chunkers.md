@@ -34,7 +34,7 @@ c, err := chunker.NewTokenChunker(400, 50, "cl100k_base")
 
 `chunkSize` is a token count. Overlap must be greater than or equal to 0 and less than `chunkSize`. `encodingName` is a tiktoken encoding. `cl100k_base` matches GPT-3.5 and GPT-4. `o200k_base` matches GPT-4o. The constructor loads that encoding immediately and returns the load error.
 
-`Chunk` encodes the whole document, then walks a window of `chunkSize` tokens with step `chunkSize - chunkOverlap`, and decodes each window back to text. `Chunk.Index` is the starting token offset, not a dense chunk number. Chunk IDs follow that index, so they stay stable for the same document and the same window size.
+`Chunk` encodes the whole document, then walks a window of `chunkSize` tokens with step `chunkSize - chunkOverlap`, and decodes each window back to text. `Chunk.Index` is the chunk's position, `0, 1, 2, ...`, as with the character chunker. Chunk IDs follow that index, so they stay stable for the same document and the same window and overlap sizes. An empty document returns `ragout.ErrEmptyDocument`.
 
 Use this chunker when the embedding model and the generator share a tokenizer and you want the window to match what they will count.
 

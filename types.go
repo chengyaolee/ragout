@@ -113,6 +113,8 @@ type Reader interface {
 	Read(ctx context.Context, r io.Reader, metadata map[string]any) ([]Document, error)
 }
 
+// Chunker splits a document into chunks. Number them 0, 1, 2, ... in document order and
+// derive IDs with ChunkID(doc.ID, index): expanders find a chunk's neighbors at index ± 1.
 type Chunker interface {
 	Chunk(ctx context.Context, doc Document) ([]Chunk, error)
 }

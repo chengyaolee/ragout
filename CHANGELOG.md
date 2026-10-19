@@ -7,6 +7,7 @@ All notable changes to this module. The format follows [Keep a Changelog](https:
 ### Breaking
 
 - **Chunks are indexed with a title and section by default.** The engine now uses `ragout.MetadataContext()`. It writes each chunk's breadcrumb (for example `Annual Report > Financials`) into the new `Chunk.Context`, which the embedder and BM25 see and the generator does not. Re-ingest existing indexes so every chunk was indexed the same way. Pass `ragout.WithContextualizer(nil)` to keep the old behavior.
+- **The token chunker numbers chunks `0, 1, 2, ...`** instead of by token offset, matching the character chunker, so expansion can find neighbors. Chunk IDs for token-chunked documents change: re-ingest them with `WithReplaceSource`. It also returns `ragout.ErrEmptyDocument` for empty input, like the character chunker.
 - **Markdown, HTML, and DOCX readers return one document per heading section**, with the heading path in `metadata["section"]`. The HTML reader also sets `metadata["title"]` from `<title>` and drops `<head>` text from the content. Chunk IDs for these files change. Re-ingest them with `WithReplaceSource` so the old whole-file chunks are removed.
 
 ### Added
@@ -28,6 +29,7 @@ All notable changes to this module. The format follows [Keep a Changelog](https:
 
 - **BM25 snapshots:** a reloaded `BM25Index` snapshot keeps each chunk's `Context`, so the index matches the same terms after a restart.
 - **Cohere:** the reranker sends `top_n` under the field name Cohere expects, so Cohere returns only the requested results.
+- **Qdrant:** `Delete` skips IDs that are not UUIDs instead of failing the whole request, since Qdrant cannot hold them. `GetChunks` and `DeleteSource` do the same.
 
 ## First public release
 

@@ -223,3 +223,23 @@ func assertCanceled(t *testing.T, chunks []ragout.Chunk, err error) {
 		t.Errorf("expected no chunks on cancel, got %d", len(chunks))
 	}
 }
+
+func TestTokenChunker_ConsecutiveIndexes(t *testing.T) {
+	c, err := chunker.NewTokenChunker(10, 2, encoding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := ragout.Document{ID: "doc", Content: strings.Repeat("alpha beta gamma delta ", 20)}
+	chunks, err := c.Chunk(context.Background(), doc)
+	if err != nil || len(chunks) < 3 {
+		t.Fatalf("want several chunks, got %d, %v", len(chunks), err)
+	}
+	for i, ch := range chunks {
+		if ch.Index != i || ch.ID != ragout.ChunkID("doc", i) {
+			t.Errorf("chunk %d: Index %d, ID %s; want %d and ChunkID(doc, %d)", i, ch.Index, ch.ID, i, i)
+		}
+	}
+	if _, err := c.Chunk(context.Background(), ragout.Document{}); !errors.Is(err, ragout.ErrEmptyDocument) {
+		t.Errorf("empty document: %v, want ErrEmptyDocument", err)
+	}
+}

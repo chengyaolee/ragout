@@ -38,7 +38,7 @@ type Chunk struct {
 
 The chunker copies the document's metadata onto every chunk. `CloneMetadata` copies the map. Nested maps and slices are shared with the original, so treat metadata values as immutable after ingest.
 
-`ChunkID(docID, index)` is a UUID of the document ID and the index. The character chunker uses `0, 1, 2, ...`. The token chunker uses the starting token offset as `Index`, so those indexes are not a dense `0..n` sequence. Either way, re-chunking the same document with the same chunker writes the same IDs.
+`ChunkID(docID, index)` is a UUID of the document ID and the index. Both built-in chunkers number chunks `0, 1, 2, ...` in document order, and a custom chunker should too: expanders find a chunk's neighbors at `index ± 1`. Re-chunking the same document with the same chunker settings writes the same IDs.
 
 The vector store and the BM25 index both keep the chunk, including its metadata. Embeddings live on the chunk in the vector store. BM25 does not need them.
 

@@ -39,7 +39,7 @@ func (tc *TokenChunker) Chunk(ctx context.Context, doc ragout.Document) ([]ragou
 		return nil, ctx.Err()
 	}
 	if doc.Content == "" {
-		return nil, fmt.Errorf("document content is empty")
+		return nil, ragout.ErrEmptyDocument
 	}
 
 	tokens := tc.encoder.Encode(doc.Content, nil, nil)
@@ -49,13 +49,15 @@ func (tc *TokenChunker) Chunk(ctx context.Context, doc ragout.Document) ([]ragou
 
 	chunks := []ragout.Chunk{}
 
+	// Chunks are numbered 0, 1, 2, ... like every chunker, so neighbors are index ± 1.
 	for i := 0; i < len(tokens); i += step {
 		end := min(i+tc.chunkSize, len(tokens))
 		chunk := tokens[i:end]
+		n := len(chunks)
 		chunks = append(chunks, ragout.Chunk{
-			ID:         ragout.ChunkID(doc.ID, i),
+			ID:         ragout.ChunkID(doc.ID, n),
 			DocumentID: doc.ID,
-			Index:      i,
+			Index:      n,
 			Content:    tc.encoder.Decode(chunk),
 			Metadata:   ragout.CloneMetadata(doc.Metadata),
 		})
