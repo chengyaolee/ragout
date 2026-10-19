@@ -2,11 +2,8 @@ package generator
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
 	"iter"
-	"net/http"
+	"strings"
 
 	"github.com/chengyaolee/ragout"
 )
@@ -52,21 +49,16 @@ func joinPrompt(prefix, prompt string) string {
 	return prefix + "\n\n" + prompt
 }
 
-// doJSON sends req and decodes a 200 response body into out.
-func doJSON(c *http.Client, req *http.Request, name string, out any) error {
-	resp, err := c.Do(req)
-	if err != nil {
-		return fmt.Errorf("%s: http request failed: %w", name, err)
+// collect drains a token stream into one string.
+func collect(tokens iter.Seq2[string, error]) (string, error) {
+	var b strings.Builder
+	for token, err := range tokens {
+		if err != nil {
+			return b.String(), err
+		}
+		b.WriteString(token)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<10))
-		return fmt.Errorf("%s: bad status code %d: %s", name, resp.StatusCode, b)
-	}
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		return fmt.Errorf("%s: decode response: %w", name, err)
-	}
-	return nil
+	return b.String(), nil
 }
 
 // lastTurns returns the final n turns of history.

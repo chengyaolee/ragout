@@ -12,10 +12,14 @@ import (
 )
 
 func jsonClient(reply string, onReq func(body string, h http.Header)) *http.Client {
+	return statusClient(http.StatusOK, reply, onReq)
+}
+
+func statusClient(status int, reply string, onReq func(body string, h http.Header)) *http.Client {
 	return &http.Client{Transport: roundTripFunc(func(req *http.Request) *http.Response {
 		b, _ := io.ReadAll(req.Body)
 		onReq(string(b), req.Header)
-		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewBufferString(reply))}
+		return &http.Response{StatusCode: status, Body: io.NopCloser(bytes.NewBufferString(reply))}
 	})}
 }
 
@@ -28,17 +32,29 @@ func TestCompleters(t *testing.T) {
 	var _ ragout.Completer = (*OpenAIGenerator)(nil)
 	var _ ragout.Completer = (*OllamaGenerator)(nil)
 
-	o := NewOpenAIGenerator("k", WithOpenAIHTTPClient(jsonClient(`{"choices":[{"message":{"content":"hi"}}]}`, capture)))
+	// Complete streams under the hood and joins the tokens.
+	sseReply := "data: {\"choices\":[{\"delta\":{\"content\":\"h\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"i\"}}]}\n\ndata: [DONE]\n"
+	o := NewOpenAIGenerator("k", WithOpenAIHTTPClient(jsonClient(sseReply, capture)))
 	if got, err := o.Complete(ctx, "PREFIX", "ask"); err != nil || got != "hi" {
 		t.Fatalf("openai = %q, %v", got, err)
 	}
-	if !strings.Contains(body, `"stream":false`) || !strings.Contains(body, "PREFIX\\n\\nask") {
+	if !strings.Contains(body, `"stream":true`) || !strings.Contains(body, "PREFIX\\n\\nask") {
 		t.Errorf("openai body = %s", body)
 	}
 
-	l := NewOllamaGenerator("m", "", WithOllamaHTTPClient(jsonClient(`{"response":"yo","done":true}`, capture)))
+	l := NewOllamaGenerator("m", "", WithOllamaHTTPClient(jsonClient("{\"response\":\"y\"}\n{\"response\":\"o\",\"done\":true}\n", capture)))
 	if got, err := l.Complete(ctx, "", "ask"); err != nil || got != "yo" {
 		t.Fatalf("ollama = %q, %v", got, err)
+	}
+
+	// Ollama failures must surface as errors, not as empty answers.
+	l = NewOllamaGenerator("m", "", WithOllamaHTTPClient(statusClient(http.StatusNotFound, `{"error":"model 'm' not found"}`, capture)))
+	if _, err := l.Complete(ctx, "", "ask"); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("missing model: err = %v", err)
+	}
+	l = NewOllamaGenerator("m", "", WithOllamaHTTPClient(jsonClient("{\"response\":\"part\"}\n{\"error\":\"out of memory\"}\n", capture)))
+	if _, err := l.Complete(ctx, "", "ask"); err == nil || !strings.Contains(err.Error(), "out of memory") {
+		t.Errorf("mid-stream error: err = %v", err)
 	}
 
 	// History turns are opt-in: the default generator ignores them.

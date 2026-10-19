@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"iter"
 	"net/http"
 	"time"
@@ -57,7 +59,9 @@ func NewOllamaGenerator(model string, endpoint string, options ...OllamaOption) 
 		endpoint = "http://localhost:11434/api/generate"
 	}
 	customTransport := http.DefaultTransport.(*http.Transport).Clone()
-	customTransport.ResponseHeaderTimeout = 30 * time.Second
+	// Ollama sends no headers until the model is loaded, and loading a large local model
+	// can take minutes. Match Ollama's own default load timeout (OLLAMA_LOAD_TIMEOUT).
+	customTransport.ResponseHeaderTimeout = 5 * time.Minute
 
 	g := &OllamaGenerator{
 		endpoint:   endpoint,
@@ -74,6 +78,7 @@ func NewOllamaGenerator(model string, endpoint string, options ...OllamaOption) 
 type ollamaStreamResponse struct {
 	Response string `json:"response"`
 	Done     bool   `json:"done"`
+	Error    string `json:"error"`
 }
 
 func (og *OllamaGenerator) GenerateIter(ctx context.Context, query string, candidates []ragout.ScoredChunk) ([]ragout.ScoredChunk, iter.Seq2[string, error]) {
@@ -84,8 +89,12 @@ func (og *OllamaGenerator) GenerateIter(ctx context.Context, query string, candi
 // in the prompt.
 func (og *OllamaGenerator) GenerateIterWithHistory(ctx context.Context, query string, history []ragout.Turn, candidates []ragout.ScoredChunk) ([]ragout.ScoredChunk, iter.Seq2[string, error]) {
 	prompt, sources := og.budgeter.BuildPromptWithHistory("", query, lastTurns(history, og.history), candidates)
+	return sources, og.stream(ctx, prompt)
+}
 
-	return sources, func(yield func(string, error) bool) {
+// stream sends prompt to /api/generate and yields the streamed tokens.
+func (og *OllamaGenerator) stream(ctx context.Context, prompt string) iter.Seq2[string, error] {
+	return func(yield func(string, error) bool) {
 		if err := ctx.Err(); err != nil {
 			yield("", err)
 			return
@@ -106,10 +115,18 @@ func (og *OllamaGenerator) GenerateIterWithHistory(ctx context.Context, query st
 
 		resp, err := og.httpClient.Do(req)
 		if err != nil {
-			yield("", err)
+			yield("", fmt.Errorf("ollama: http request failed: %w", err))
 			return
 		}
 		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			// Ollama explains failures (e.g. a model that is not pulled) in a JSON body.
+			var body ollamaStreamResponse
+			_ = json.NewDecoder(io.LimitReader(resp.Body, 1<<10)).Decode(&body)
+			yield("", fmt.Errorf("ollama: bad status code %d: %s", resp.StatusCode, body.Error))
+			return
+		}
 
 		scanner := bufio.NewScanner(resp.Body)
 		for scanner.Scan() {
@@ -117,7 +134,8 @@ func (og *OllamaGenerator) GenerateIterWithHistory(ctx context.Context, query st
 			if err := json.Unmarshal(scanner.Bytes(), &chunk); err != nil {
 				continue
 			}
-			if chunk.Done {
+			if chunk.Error != "" {
+				yield("", fmt.Errorf("ollama: %s", chunk.Error))
 				return
 			}
 			if chunk.Response != "" {
@@ -125,30 +143,22 @@ func (og *OllamaGenerator) GenerateIterWithHistory(ctx context.Context, query st
 					return // Consumer stopped
 				}
 			}
+			if chunk.Done {
+				return
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			yield("", fmt.Errorf("ollama: stream read error: %w", err))
 		}
 	}
 }
 
-// Complete runs a non-streaming generation. Ollama reuses its KV cache for an
-// unchanged prompt prefix, so prefix is sent first and unchanged.
+// Complete runs one generation and returns the whole reply. It streams under the hood,
+// so the response-header timeout bounds model loading and the first token, not the
+// whole generation. Ollama reuses its KV cache for an unchanged prompt prefix, so prefix
+// is sent first and unchanged.
 func (og *OllamaGenerator) Complete(ctx context.Context, prefix, prompt string) (string, error) {
-	b, err := json.Marshal(og.payload(map[string]any{
-		"model":  og.model,
-		"prompt": joinPrompt(prefix, prompt),
-		"stream": false,
-	}))
-	if err != nil {
-		return "", err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, og.endpoint, bytes.NewReader(b))
-	if err != nil {
-		return "", err
-	}
-	var out ollamaStreamResponse
-	if err := doJSON(og.httpClient, req, "ollama", &out); err != nil {
-		return "", err
-	}
-	return out.Response, nil
+	return collect(og.stream(ctx, joinPrompt(prefix, prompt)))
 }
 
 // payload adds request-wide options to an Ollama request body.

@@ -97,8 +97,12 @@ func (g *OpenAIGenerator) GenerateIter(ctx context.Context, query string, candid
 // in the prompt.
 func (g *OpenAIGenerator) GenerateIterWithHistory(ctx context.Context, query string, history []ragout.Turn, candidates []ragout.ScoredChunk) ([]ragout.ScoredChunk, iter.Seq2[string, error]) {
 	prompt, sources := g.budgeter.BuildPromptWithHistory("You are an accurate RAG assistant.", query, lastTurns(history, g.history), candidates)
+	return sources, g.stream(ctx, prompt)
+}
 
-	return sources, func(yield func(string, error) bool) {
+// stream sends prompt as one user message and yields the streamed tokens.
+func (g *OpenAIGenerator) stream(ctx context.Context, prompt string) iter.Seq2[string, error] {
+	return func(yield func(string, error) bool) {
 		if err := ctx.Err(); err != nil {
 			yield("", err)
 			return
@@ -171,33 +175,10 @@ func (g *OpenAIGenerator) GenerateIterWithHistory(ctx context.Context, query str
 	}
 }
 
-// Complete runs a non-streaming chat completion. OpenAI caches long shared prompt
-// prefixes automatically, so prefix is sent first and unchanged to benefit from it.
+// Complete runs one chat completion and returns the whole reply. It streams under the
+// hood, so the client's response-header timeout bounds the wait for the first token,
+// not the whole generation. OpenAI caches long shared prompt prefixes automatically,
+// so prefix is sent first and unchanged to benefit from it.
 func (g *OpenAIGenerator) Complete(ctx context.Context, prefix, prompt string) (string, error) {
-	body, err := json.Marshal(openAIChatRequest{
-		Model:    g.model,
-		Messages: []openAIChatMessage{{Role: "user", Content: joinPrompt(prefix, prompt)}},
-	})
-	if err != nil {
-		return "", err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, g.endpoint, bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Authorization", "Bearer "+g.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	var out struct {
-		Choices []struct {
-			Message openAIChatMessage `json:"message"`
-		} `json:"choices"`
-	}
-	if err := doJSON(g.httpClient, req, "openai", &out); err != nil {
-		return "", err
-	}
-	if len(out.Choices) == 0 {
-		return "", fmt.Errorf("openai: response has no choices")
-	}
-	return out.Choices[0].Message.Content, nil
+	return collect(g.stream(ctx, joinPrompt(prefix, prompt)))
 }

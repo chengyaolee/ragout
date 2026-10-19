@@ -29,6 +29,9 @@ All notable changes to this module. The format follows [Keep a Changelog](https:
 
 - **BM25 snapshots:** a reloaded `BM25Index` snapshot keeps each chunk's `Context`, so the index matches the same terms after a restart.
 - **Cohere:** the reranker sends `top_n` under the field name Cohere expects, so Cohere returns only the requested results.
+- **Ollama errors:** a non-200 status or an `error` in the stream, such as a model that is not pulled, is returned as an error instead of an empty answer.
+- **Ollama model loading:** the generator's response-header timeout is 5 minutes, up from 30 seconds. A model that took longer than 30 seconds to load was cancelled on every request and could never answer.
+- **Long completions:** `Complete` streams under the hood on both generators, so the header timeout bounds the time to the first token rather than the whole reply.
 - **Qdrant:** `Delete` skips IDs that are not UUIDs instead of failing the whole request, since Qdrant cannot hold them. `GetChunks` and `DeleteSource` do the same.
 
 ## First public release

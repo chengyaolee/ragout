@@ -36,13 +36,13 @@ gen := generator.NewOllamaGenerator("llama3.2", "http://localhost:11434/api/gene
 )
 ```
 
-An empty endpoint becomes `http://localhost:11434/api/generate`. The budgeter is called with an empty system string, so the prompt starts at "Context Information:". The response is a JSON line stream. Each object contributes its `response` field until `done` is true. The header timeout is 30 seconds.
+An empty endpoint becomes `http://localhost:11434/api/generate`. The budgeter is called with an empty system string, so the prompt starts at "Context Information:". The response is a JSON line stream. Each object contributes its `response` field until `done` is true. A non-200 status, or an `error` field in the stream (for example a model that is not pulled), ends the stream with that error. The response-header timeout is 5 minutes, matching Ollama's own model-load timeout, because Ollama sends nothing until the model is loaded. Reasoning models stream their thinking in a separate field, which is not part of the answer.
 
 `generator.WithOllamaNumCtx(n)` sends `options.num_ctx` with every request. Ollama cuts a prompt longer than its context window without an error, so set it at least as large as the budgeter's token limit plus room for the answer. Without it, Ollama's own default applies.
 
 ## One-shot calls
 
-Both generators also implement `ragout.Completer`, a non-streaming call used by the `contextual` and `transform` packages:
+Both generators also implement `ragout.Completer`, a one-shot call used by the `contextual` and `transform` packages. It streams under the hood and returns the joined reply, so the response-header timeout bounds the wait for the first token, not the whole generation:
 
 ```go
 out, err := gen.Complete(ctx, prefix, prompt)
