@@ -38,6 +38,8 @@ gen := generator.NewOllamaGenerator("llama3.2", "http://localhost:11434/api/gene
 
 An empty endpoint becomes `http://localhost:11434/api/generate`. The budgeter is called with an empty system string, so the prompt starts at "Context Information:". The response is a JSON line stream. Each object contributes its `response` field until `done` is true. A non-200 status, or an `error` field in the stream (for example a model that is not pulled), ends the stream with that error. The response-header timeout is 5 minutes, matching Ollama's own model-load timeout, because Ollama sends nothing until the model is loaded. Reasoning models stream their thinking in a separate field, which is not part of the answer.
 
+Reasoning models (Qwen3, DeepSeek-R1, gpt-oss) do not think by default: every request sends `think: false`. ragout's calls are grounded in retrieved text or are short rewrites, so thinking mostly adds latency, and a slow first token is the usual symptom of leaving it on. `generator.WithOllamaThink(true)` turns it back on. The thinking text is never part of the answer. Turning it on for a model that cannot think makes Ollama return an error.
+
 `generator.WithOllamaNumCtx(n)` sends `options.num_ctx` with every request. Ollama cuts a prompt longer than its context window without an error, so set it at least as large as the budgeter's token limit plus room for the answer. Without it, Ollama's own default applies.
 
 ## One-shot calls

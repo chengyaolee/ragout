@@ -19,8 +19,9 @@ type OllamaGenerator struct {
 	model      string
 	httpClient *http.Client
 	budgeter   *ContextBudgeter
-	history    int // earlier turns to include when a query passes history (default 0: none)
-	numCtx     int // context window sent as options.num_ctx; 0 leaves Ollama's default
+	history    int  // earlier turns to include when a query passes history (default 0: none)
+	numCtx     int  // context window sent as options.num_ctx; 0 leaves Ollama's default
+	think      bool // let reasoning models think before answering (default false)
 }
 
 type OllamaOption func(*OllamaGenerator)
@@ -45,6 +46,16 @@ func WithOllamaBudgeter(b *ContextBudgeter) OllamaOption {
 // when a query passes ragout.WithHistory. The default, 0, keeps answers single-turn.
 func WithOllamaHistoryTurns(n int) OllamaOption {
 	return func(g *OllamaGenerator) { g.history = max(0, n) }
+}
+
+// WithOllamaThink lets reasoning models (Qwen3, DeepSeek-R1, gpt-oss...) think before
+// answering. It is off by default: ragout's calls are grounded in retrieved text or are
+// short rewrites, where thinking adds latency on every call without much to gain, and
+// Ollama's own default of thinking whenever the model can is the usual cause of a slow
+// first token. The thinking text is never part of the answer either way. Turning it on
+// for a model that cannot think makes Ollama return an error.
+func WithOllamaThink(on bool) OllamaOption {
+	return func(g *OllamaGenerator) { g.think = on }
 }
 
 // WithOllamaNumCtx sets the context window (Ollama's num_ctx) for every request.
@@ -163,6 +174,7 @@ func (og *OllamaGenerator) Complete(ctx context.Context, prefix, prompt string) 
 
 // payload adds request-wide options to an Ollama request body.
 func (og *OllamaGenerator) payload(p map[string]any) map[string]any {
+	p["think"] = og.think
 	if og.numCtx > 0 {
 		p["options"] = map[string]any{"num_ctx": og.numCtx}
 	}

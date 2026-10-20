@@ -22,7 +22,7 @@ All notable changes to this module. The format follows [Keep a Changelog](https:
 - **Evaluation:** `Engine.Retrieve`, which runs everything before generation and needs no generator, and the `eval` package, which reports hit rate, recall, and MRR.
 - **Metadata keys:** `ragout.MetadataTitle` and `ragout.MetadataSection`.
 - **Answer fields:** `Answer.Question`, `Answer.Searches`, and `Answer.TransformErr`.
-- **Ollama:** `generator.WithOllamaNumCtx` sets Ollama's context window, since Ollama silently truncates longer prompts.
+- **Ollama:** `generator.WithOllamaNumCtx` sets Ollama's context window, since Ollama silently truncates longer prompts. `generator.WithOllamaThink` controls whether reasoning models think first; they do not by default, since a rewrite or a grounded answer rarely needs it and it delays the first token.
 - **Integration tests:** the `integration` package runs against real Chroma, Qdrant, Ollama, and OpenAI when `RAGOUT_IT_*` variables are set.
 
 ### Fixed

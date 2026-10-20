@@ -86,4 +86,22 @@ func TestCompleters(t *testing.T) {
 	if !strings.Contains(body, `"num_ctx":8192`) {
 		t.Errorf("num_ctx missing: %s", body)
 	}
+
+	// Thinking is off unless asked for, on both request paths.
+	l = NewOllamaGenerator("m", "", WithOllamaHTTPClient(jsonClient(`{"response":"yo","done":true}`, capture)))
+	l.Complete(ctx, "", "ask")
+	if !strings.Contains(body, `"think":false`) {
+		t.Errorf("default request must set think=false: %s", body)
+	}
+	_, toks = l.GenerateIter(ctx, "q", nil)
+	for range toks {
+	}
+	if !strings.Contains(body, `"think":false`) {
+		t.Errorf("default streaming request must set think=false: %s", body)
+	}
+	l = NewOllamaGenerator("m", "", WithOllamaThink(true), WithOllamaHTTPClient(jsonClient(`{"response":"yo","done":true}`, capture)))
+	l.Complete(ctx, "", "ask")
+	if !strings.Contains(body, `"think":true`) {
+		t.Errorf("WithOllamaThink(true) not sent: %s", body)
+	}
 }
