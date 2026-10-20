@@ -26,6 +26,12 @@ Status: not in this release.
 
 `WithFusion` accepts any `FusionStrategy`, and RRF is the only built-in one. `reranker.ConvexScoreCombination` already blends sigmoid-normalized dense and sparse scores for one dense and one sparse list. A built-in convex strategy waits on a question this release does not answer: with several searches per question, there is no single dense and sparse score to blend.
 
+## Evaluation baseline
+
+Status: not in this release. The `eval` package and `Engine.Retrieve` ship; the question set and the results do not.
+
+A published question set over ragout's own documentation, with questions grouped by the method each one tests (exact lookup, paraphrase, subject only in a heading, compound, follow-up with history, answer spanning chunks, unanswerable). Running it against each configuration gives a per-category table that decides which methods stay on by default and puts a measured effect in the docs of the ones that do not.
+
 ## Local cross-encoder
 
 Status: not in this release.
