@@ -27,13 +27,15 @@ type Model struct {
 // cross-encoder under Apache 2.0, small enough for a laptop or a modest server.
 var BGERerankerV2M3 = Model{Name: "BAAI/bge-reranker-v2-m3"}
 
-// Qwen3Reranker4B is Qwen/Qwen3-Reranker-4B (Apache 2.0): stronger and heavier than the
-// default. It scores yes/no from a chat template, which is applied here with the
-// model's default instruction; use Qwen3Reranker for a task-specific one. Serve it with
-// vLLM (rerank API, with the hf_overrides from the model card) or a reranking GGUF in
-// llama.cpp. If your server already applies the template, set FormatQuery and
-// FormatDocument to nil.
-var Qwen3Reranker4B = Qwen3Reranker("Qwen/Qwen3-Reranker-4B", "")
+// Qwen3Reranker4B is Qwen/Qwen3-Reranker-4B (Apache 2.0): stronger and about 7x
+// larger than the default. It scores yes/no from a chat template; this preset sends raw
+// text for servers that apply the template themselves, such as llama.cpp with a GGUF
+// converted by its official converter:
+//
+//	llama-server -hf Voodisss/Qwen3-Reranker-4B-GGUF-llama_cpp:Q4_K_M --reranking --pooling rank --embedding
+//
+// For vLLM, which leaves the template to the client, use Qwen3Reranker instead.
+var Qwen3Reranker4B = Model{Name: "Qwen/Qwen3-Reranker-4B"}
 
 const (
 	qwen3Instruction = "Given a web search query, retrieve relevant passages that answer the query"
@@ -41,9 +43,12 @@ const (
 	qwen3Suffix      = "<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
 )
 
-// Qwen3Reranker returns a Qwen3-Reranker model (any size) wrapped in its prompt
-// template. An empty instruction uses the model card's default. The model card
-// recommends an English instruction written for your task; it typically adds 1-5%.
+// Qwen3Reranker returns a Qwen3-Reranker model (any size) whose query and documents are
+// wrapped in its prompt template here, for servers that do not apply it, such as vLLM
+// (serve with the hf_overrides from the model card). Do not use it with llama.cpp,
+// which applies the template itself: wrapping twice lowers the scores. An empty
+// instruction uses the model card's default; the card recommends an English
+// instruction written for your task, which it says typically adds 1-5%.
 func Qwen3Reranker(name, instruction string) Model {
 	if instruction == "" {
 		instruction = qwen3Instruction

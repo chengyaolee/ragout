@@ -87,8 +87,11 @@ func TestHTTPReranker_Qwen3Template(t *testing.T) {
 	if d, _ := docs[0].(string); !strings.HasPrefix(d, "<Document>: Pets") || !strings.HasSuffix(d, "</think>\n\n") {
 		t.Errorf("document not templated: %q", d)
 	}
-	if !strings.Contains(Qwen3Reranker4B.FormatQuery("x"), qwen3Instruction) {
+	if !strings.Contains(Qwen3Reranker("q", "").FormatQuery("x"), qwen3Instruction) {
 		t.Errorf("default instruction missing")
+	}
+	if Qwen3Reranker4B.FormatQuery != nil || Qwen3Reranker4B.FormatDocument != nil {
+		t.Errorf("the llama.cpp preset must send raw text; the server applies the template")
 	}
 }
 
