@@ -30,3 +30,6 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Evaluation data: question sets and downloaded benchmarks. Results go in eval/results.
+eval/data/
