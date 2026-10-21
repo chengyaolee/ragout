@@ -26,6 +26,15 @@ cases := []eval.Case{
 
 A retrieved chunk counts as relevant if it contains any `Expected` entry, ignoring case and whitespace. Use several entries when the answer is spread over several chunks. Matching on text rather than chunk IDs keeps the cases valid when you re-chunk or re-ingest.
 
+Two more fields help with larger sets:
+
+| Field | Use |
+| --- | --- |
+| `Category` | Groups results in `Report.ByCategory`. Tag each question with the method it is meant to test (paraphrase, follow-up, compound...). An average hides a method that helps only one kind of question. |
+| `ExpectedSources` | Relevant documents by `metadata["source"]`, for benchmarks that label relevance by document. |
+
+A case with neither `Expected` nor `ExpectedSources` is not scored, and is counted in `Report.Skipped`. Unanswerable questions belong there. They matter for a workflow that can abstain (see [Build retrieval workflows](workflows.md)).
+
 Twenty to fifty questions that real users ask are enough to see a difference.
 
 ## Run and compare
@@ -42,11 +51,28 @@ fmt.Println(withRewrite)
 | `HitRate` | Share of questions with at least one relevant chunk in the top `k`. |
 | `Recall` | Mean share of each question's `Expected` entries found in the top `k`. |
 | `MRR` | Mean of 1 / rank of the first relevant chunk, 0 when there is none. |
+| `NDCG` | nDCG@k with binary gains, each expectation counted once. Comparable with published benchmark numbers. |
 | `Misses` | The questions with no relevant chunk in the top `k`. Read these first. |
 
-A question that retrieves nothing counts as a miss. Any other error stops the run.
+A question that retrieves nothing counts as a miss. Any other error stops the run. `eval.RunWith` scores any retrieval function the same way, for example the evidence a flow gathered.
 
 Ingest the same files into both engines. For `k`, use the `topN` you will run in production.
+
+## The bundled benchmarks
+
+`eval/cmd/bench` runs every retrieval method in this module against a question set and writes a markdown report. It compares no context, metadata context, and LLM context; BM25, dense, and hybrid search; each query transformer; both rerankers; expansion; and CRAG.
+
+```bash
+go run ./eval/cmd/bench -suite docs    -bge http://localhost:8082/v1/rerank -qwen http://localhost:8081/v1/rerank -out eval/results/docs.md
+go run ./eval/cmd/bench -suite scifact -bge http://localhost:8082/v1/rerank -qwen http://localhost:8081/v1/rerank -out eval/results/scifact.md
+```
+
+| Suite | Corpus | Questions |
+| --- | --- | --- |
+| `docs` | This repository's `docs/` | 48 hand-written, in 7 categories, 6 of them unanswerable. |
+| `scifact` | BEIR SciFact, 5,183 paper abstracts (CC BY-SA 4.0), downloaded on first run | 300 claims |
+
+Question sets and downloaded benchmarks live in `eval/data/`, which is gitignored. Only the reports in `eval/results/` are committed. The `scifact` suite downloads itself. The `docs` question set is not in the repository yet, so that suite runs only where the file exists. It needs Ollama with `nomic-embed-text` and a chat model (default `qwen2.5:3b`, run at temperature 0 so results repeat). The reranker rows are skipped unless their servers are given.
 
 ## Integration tests
 

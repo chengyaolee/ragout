@@ -18,7 +18,9 @@ This page is the public list of milestones. Each unshipped item is specified as 
 - Pluggable fusion over any number of result lists, RRF by default.
 - Neighbor and section expansion before generation. See [Widen hits](how-to/expand-hits.md).
 - Optional conversation history in the answer prompt.
-- `Retrieve` and the `eval` package for measuring retrieval. See [Measure retrieval](how-to/evaluate.md).
+- `Retrieve` and the `eval` package for measuring retrieval, with per-category scoring, nDCG, and a benchmark runner. Results for this repository's docs and BEIR SciFact are in [eval/results](../eval/results/). See [Measure retrieval](how-to/evaluate.md).
+- A local cross-encoder reranker over HTTP: bge-reranker-v2-m3 by default, Qwen3-Reranker-4B as an option. See [Rerank results](how-to/rerank.md).
+- Retrieval workflows (`flow`): a graph of swappable steps, with a corrective-RAG preset that grades evidence, searches again for what is missing, and abstains when it stays insufficient. See [Build retrieval workflows](how-to/workflows.md).
 
 ## Score-blending fusion
 
@@ -26,29 +28,12 @@ Status: not in this release.
 
 `WithFusion` accepts any `FusionStrategy`, and RRF is the only built-in one. `reranker.ConvexScoreCombination` already blends sigmoid-normalized dense and sparse scores for one dense and one sparse list. A built-in convex strategy waits on a question this release does not answer: with several searches per question, there is no single dense and sparse score to blend.
 
-## Evaluation baseline
-
-Status: not in this release. The `eval` package and `Engine.Retrieve` ship; the question set and the results do not.
-
-A published question set over ragout's own documentation, with questions grouped by the method each one tests (exact lookup, paraphrase, subject only in a heading, compound, follow-up with history, answer spanning chunks, unanswerable). Running it against each configuration gives a per-category table that decides which methods stay on by default and puts a measured effect in the docs of the ones that do not.
-
-## Local cross-encoder
+## Workflow extensions
 
 Status: not in this release.
 
-Cohere and MMR are the rerankers you can pass to `WithReranker`. A third implementation will POST to an HTTP `/rerank` endpoint that speaks the text-embeddings-inference shape, so a local BGE reranker or any compatible server can run beside the process. It will be another `Reranker`. The Cohere and MMR constructors stay.
-
-## Agentic loop
-
-Status: not in this release.
-
-`Query` is one pass: retrieve, rerank, generate. A later `QueryAgentic` will add a bounded loop:
-
-1. Retrieve and draft.
-2. A relevance check decides whether the retrieved chunks are enough to answer.
-3. On a miss, the question is reformulated and the loop runs again, up to a hop limit.
-
-The single-pass `Query` methods stay the default. The loop runs only when you call it.
+- A web-search fallback step for CRAG, as in the original paper, behind the same `Retriever` interface.
+- A tool-using agent step: a model that picks which retrieval or tool to call next, inside a flow. It needs tool-calling support in the generators first.
 
 ## GraphRAG
 
@@ -73,7 +58,7 @@ Status: not in this release. Chroma and Qdrant are already supported and are not
 
 ## Query rewrite follow-ups
 
-Status: not in this release. Each waits on evidence from `eval` that it is needed.
+Status: not in this release. Each waits on evidence from the evaluation that it is needed.
 
 - Weighted fusion, so rephrasings count less than the question itself.
 - A per-sub-question quota before the final cut, so `Decompose` evidence for one part of a question is not crowded out.

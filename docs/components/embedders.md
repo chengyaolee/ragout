@@ -11,7 +11,7 @@ Dimension() int
 
 The returned slice is aligned with `texts`. A count mismatch is `ragout.ErrCountMismatch`. An empty embedding list on a query is `ragout.ErrEmptyEmbeddings`.
 
-During ingest the engine groups chunks into batches of `WithEmbedBatchSize` (default 32) and runs up to `WithEmbedConcurrency` workers (default 8). One batch failure cancels the rest. During query the engine embeds the question as a single text.
+During ingest the engine groups chunks into batches of `WithEmbedBatchSize` (default 32) and runs up to `WithEmbedConcurrency` workers (default 8). One batch failure cancels the rest. During query the engine embeds every dense search text in one call: the question alone, or the question plus any rewrites a query transformer added.
 
 `Dimension` is what you pass to `store.NewQdrantStore`. The in-memory store checks dimensions at search time and returns `ErrDimensionMismatch` when a stored vector differs.
 

@@ -20,7 +20,8 @@ Ragout is that pipeline, already assembled, for code that has to stay in Go.
 - **Chunks keep their context.** Markdown, HTML, and DOCX are split at headings, and every chunk is indexed with its title and section, so "Revenue grew 24%" still matches "Acme 2024 results". LLM-written context is one option away.
 - **Questions can be rewritten, safely.** Follow-ups are condensed with the conversation, and rephrasings, sub-questions, or a HyDE passage can widen recall. A failed or slow rewrite falls back to the original question.
 - **Each stage is one interface.** Swap the reader, the chunker, the contextualizer, the query transformer, the embedder, the store, the reranker, the expander, or the generator without touching the engine. OpenAI and Ollama clients ship in the module. A type you write yourself is the same shape.
-- **You can measure it.** `Retrieve` runs search without generation, and the `eval` package scores hit rate, recall, and MRR on your own questions.
+- **It checks before it answers, if you want.** The `flow` package runs retrieval as a workflow of swappable steps. Its corrective-RAG preset grades the evidence, searches again for what is missing, and says so when the documents do not hold the answer.
+- **You can measure it.** `Retrieve` runs search without generation, the `eval` package scores hit rate, recall, MRR, and nDCG on your own questions, and [eval/results](eval/results/) has the numbers for every method here.
 
 | Project | What it is |
 | --- | --- |
@@ -114,7 +115,8 @@ Ingest splits the document by section, chunks it, adds each chunk's title and se
 | Chunkers | [`chunker`](docs/components/chunkers.md) | Recursive character windows, or tiktoken windows |
 | Embedders | [`embedder`](docs/components/embedders.md) | OpenAI, Ollama, and a rate limiter |
 | Stores | [`store`](docs/components/stores.md) | In-memory vectors, BM25, Chroma, Qdrant |
-| Rerankers | [`reranker`](docs/components/rerankers.md) | Cohere, or maximal marginal relevance |
+| Rerankers | [`reranker`](docs/components/rerankers.md) | Local cross-encoders over HTTP (bge-reranker-v2-m3, Qwen3-Reranker-4B), Cohere, or maximal marginal relevance |
+| Workflows | [`flow`](docs/how-to/workflows.md) | Retrieval as a graph of swappable steps; corrective RAG with grading, re-search, and abstain |
 | Expanders | [`expand`](docs/how-to/expand-hits.md) | Neighbor chunks, or the whole section |
 | Generators | [`generator`](docs/components/generators.md) | OpenAI and Ollama, with a context budget and optional history |
 | Evaluation | [`eval`](docs/how-to/evaluate.md) | Hit rate, recall, and MRR over your own questions |
@@ -125,16 +127,16 @@ Ingest splits the document by section, chunks it, adds each chunk's title and se
 - [Concepts](docs/concepts/pipeline.md) — how a query runs, documents, hybrid retrieval, generation, streaming
 - [How-to guides](docs/how-to/ingest-files.md) — files, updating sources, chunk context, filters, stores, query rewrite, reranking, expansion, evaluation, traces
 - [Components](docs/components/engine.md) — constructors and options for each package
-- [Roadmap](docs/roadmap.md) — local cross-encoder, agentic loops, GraphRAG
+- [Roadmap](docs/roadmap.md) — workflow extensions, GraphRAG, scale
 - [Changelog](CHANGELOG.md) — what changed between releases
 
 The full index is [docs/README.md](docs/README.md).
 
 ## Roadmap
 
-Shipped today: hybrid dense and BM25 retrieval with pluggable fusion, section-aware readers, chunk context (title and section by default, LLM-written on request), query rewriting with conversation history, Cohere and MMR rerankers, neighbor and section expansion, cited streaming answers, source replacement and deletion, retrieval evaluation, in-memory persistence, Chroma, and Qdrant.
+Shipped today: hybrid dense and BM25 retrieval with pluggable fusion, section-aware readers, chunk context (title and section by default, LLM-written on request), query rewriting with conversation history, local cross-encoder rerankers plus Cohere and MMR, neighbor and section expansion, corrective-RAG workflows, cited streaming answers, source replacement and deletion, retrieval evaluation with published results, in-memory persistence, Chroma, and Qdrant.
 
-Next, still unshipped: a local HTTP cross-encoder, a self-check query loop, and GraphRAG. Details are on the [roadmap](docs/roadmap.md).
+Next, still unshipped: workflow extensions (web fallback, tool-using steps), GraphRAG, and scale work. Details are on the [roadmap](docs/roadmap.md).
 
 ## License
 

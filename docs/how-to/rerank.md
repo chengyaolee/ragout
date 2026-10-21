@@ -42,7 +42,25 @@ The reranker embeds the question with the embedder you pass, then compares chunk
 
 ## A local cross-encoder
 
-A generic HTTP reranker for BGE or Hugging Face text-embeddings-inference is on the [roadmap](../roadmap.md). It is not in this release. Cohere and MMR are the two `Reranker` implementations you can pass to `WithReranker` today. Anything that implements `Rerank(ctx, query, candidates, topN)` can be passed as well.
+Run the model yourself and point `reranker.NewHTTP` at it. No API key, no per-call cost.
+
+```bash
+brew install llama.cpp   # or build it; any OS works
+llama-server -hf gpustack/bge-reranker-v2-m3-GGUF:Q8_0 --reranking --port 8080
+```
+
+```go
+ragout.WithReranker(reranker.NewHTTP("")) // bge-reranker-v2-m3 on localhost:8080
+```
+
+To try the larger Qwen3-Reranker-4B, serve it and switch one option:
+
+```go
+ragout.WithReranker(reranker.NewHTTP("http://localhost:8081/v1/rerank",
+    reranker.WithModel(reranker.Qwen3Reranker4B)))
+```
+
+Rerank a pool smaller than the recall depth if latency matters: `WithTopKRecall(30)` sends 30 candidates instead of 50. Measured effects on two question sets are in [eval/results](../../eval/results/). Server setup, request shapes, and the vLLM variant are in [Rerankers](../components/rerankers.md).
 
 ## Next
 

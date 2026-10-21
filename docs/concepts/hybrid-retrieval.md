@@ -28,11 +28,15 @@ score(chunk) = Σ 1 / (k + rank)
 
 `rank` starts at 1 for the best hit in that list. `k` defaults to 60 (`WithRRFK`). A chunk that is first in both lists scores `2/(k+1)`. A chunk that appears in only one list still gets that list's term. The engine then keeps the top `topKRecall` fused chunks.
 
-Fusion runs only when both searches returned at least one hit. If the vector search misses and BM25 hits, the BM25 order is the candidate list, and `Score` is still the BM25 score. The symmetric case uses cosine. That is the whole degradation path: configure one store, or configure both and tolerate one side returning nothing.
+Fusion runs only when more than one result list has hits. If the vector search misses and BM25 hits, the BM25 order is the candidate list, and `Score` is still the BM25 score. The symmetric case uses cosine. That is the whole degradation path: configure one store, or configure both and tolerate one side returning nothing.
 
-## Helpers the engine does not call
+With a query transformer, each search adds its own dense and sparse lists, and they are all fused at once by the same formula. See [Rewrite questions](../how-to/query-rewrite.md).
 
-`reranker.ConvexScoreCombination` blends sigmoid-normalized dense and sparse scores with an alpha weight. `MinMaxNormalization` and `LogisticSigmoidNormalization` are the scaling helpers next to it. The engine does not call them. Wiring blend-by-score in as an engine option is a [roadmap](../roadmap.md) item. Today the query path calls `ReciprocalRankFusion` only.
+## Choosing the fusion
+
+Reciprocal rank fusion is the default, as `ragout.RRF(k)`. `WithFusion` replaces it with any `ragout.FusionStrategy`, which receives every result list and returns one ranking.
+
+`reranker.ConvexScoreCombination` blends sigmoid-normalized dense and sparse scores with an alpha weight. `MinMaxNormalization` and `LogisticSigmoidNormalization` are the scaling helpers next to it. A built-in score-blending strategy is a [roadmap](../roadmap.md) item: with several searches per question there is no single dense and sparse score to blend.
 
 ## After the ranking
 

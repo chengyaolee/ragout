@@ -23,6 +23,9 @@ All notable changes to this module. The format follows [Keep a Changelog](https:
 - **Metadata keys:** `ragout.MetadataTitle` and `ragout.MetadataSection`.
 - **Answer fields:** `Answer.Question`, `Answer.Searches`, and `Answer.TransformErr`.
 - **Ollama:** `generator.WithOllamaNumCtx` sets Ollama's context window, since Ollama silently truncates longer prompts. `generator.WithOllamaThink` controls whether reasoning models think first; they do not by default, since a rewrite or a grounded answer rarely needs it and it delays the first token.
+- **Local cross-encoder reranking:** `reranker.NewHTTP` calls any rerank server (llama.cpp, vLLM, Infinity, TEI, or Jina- and Cohere-compatible APIs). bge-reranker-v2-m3 is the default model, `reranker.Qwen3Reranker4B` the larger option, and `reranker.Qwen3Reranker` applies Qwen3's template for servers that do not.
+- **Retrieval workflows:** the `flow` package runs retrieval as a graph of named steps that can be replaced, inserted, removed, or rewired, with `flow.CRAG` as a corrective-RAG preset (retrieve, grade, re-search, generate or abstain).
+- **Evaluation:** `eval.Case.Category` and `ExpectedSources`, per-category reports, nDCG, `eval.RunWith`, and `eval/cmd/bench`, which benchmarks every retrieval method on this repository's docs and on BEIR SciFact. Results are in `eval/results/`.
 - **Integration tests:** the `integration` package runs against real Chroma, Qdrant, Ollama, and OpenAI when `RAGOUT_IT_*` variables are set.
 
 ### Fixed

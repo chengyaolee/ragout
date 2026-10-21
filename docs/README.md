@@ -31,6 +31,7 @@ Short recipes. Each one assumes you already have an `Engine`.
 - [Choose a store](how-to/stores.md)
 - [Rewrite questions](how-to/query-rewrite.md)
 - [Rerank results](how-to/rerank.md)
+- [Build retrieval workflows](how-to/workflows.md)
 - [Widen hits before generation](how-to/expand-hits.md)
 - [Measure retrieval](how-to/evaluate.md)
 - [Traces and metrics](how-to/observability.md)
@@ -49,6 +50,6 @@ Constructors, options, and the path each package takes at runtime.
 
 ## Roadmap
 
-What this release includes, and the milestones that are specified but not shipped: a local cross-encoder, agentic loops, GraphRAG, and scale work. Changes between releases are in the [changelog](../CHANGELOG.md).
+What this release includes, and the milestones that are specified but not shipped: workflow extensions, GraphRAG, and scale work. Changes between releases are in the [changelog](../CHANGELOG.md).
 
 - [Roadmap](roadmap.md)
