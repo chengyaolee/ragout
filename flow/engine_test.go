@@ -42,7 +42,7 @@ func TestCRAGWithEngine(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	grader := &replies{"INSUFFICIENT\nbilling hosting region", "SUFFICIENT"}
+	grader := &replies{"NONE\nbilling hosting region", "1"}
 	s, err := flow.CRAG(e, grader, generator.NewMockGenerator(nil)).Run(ctx, "who owns billing")
 	if err != nil {
 		t.Fatal(err)

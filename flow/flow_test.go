@@ -82,7 +82,7 @@ func TestCRAG_SufficientFirstHop(t *testing.T) {
 	r := &fakeRetriever{index: map[string][]string{"who leads raft": {"a", "b"}}}
 	gen := &echoGenerator{}
 	var streamed strings.Builder
-	s, err := CRAG(r, &scriptedLLM{replies: []string{"<think>looks fine</think>\nSUFFICIENT"}}, gen).
+	s, err := CRAG(r, &scriptedLLM{replies: []string{"<think>looks fine</think>\n1, 2"}}, gen).
 		Run(context.Background(), "who leads raft", WithTokens(func(t string) error { streamed.WriteString(t); return nil }))
 	if err != nil {
 		t.Fatal(err)
@@ -101,8 +101,8 @@ func TestCRAG_CorrectsThenAnswers(t *testing.T) {
 		"billing service hosting region":         {"b", "a"},
 	}}
 	llm := &scriptedLLM{replies: []string{
-		"INSUFFICIENT\nSearch query: billing service hosting region",
-		"SUFFICIENT",
+		"NONE\nSearch query: billing service hosting region",
+		"1",
 	}}
 	gen := &echoGenerator{}
 	s, err := CRAG(r, llm, gen).Run(context.Background(), "who owns billing and where does it run")
@@ -122,7 +122,7 @@ func TestCRAG_CorrectsThenAnswers(t *testing.T) {
 
 func TestCRAG_AbstainsWhenHopsRunOut(t *testing.T) {
 	r := &fakeRetriever{index: map[string][]string{"q": {"a"}, "more": {"b"}}}
-	llm := &scriptedLLM{replies: []string{"INSUFFICIENT\nmore", "INSUFFICIENT\nstill more"}}
+	llm := &scriptedLLM{replies: []string{"NONE\nmore", "NONE\nstill more"}}
 	s, err := CRAG(r, llm, &echoGenerator{}).Run(context.Background(), "q")
 	if err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func TestCRAG_AbstainsWhenHopsRunOut(t *testing.T) {
 	}
 
 	// With AnswerWhenExhausted it answers from what it found instead.
-	llm = &scriptedLLM{replies: []string{"INSUFFICIENT\nmore", "INSUFFICIENT\nstill more"}}
+	llm = &scriptedLLM{replies: []string{"NONE\nmore", "NONE\nstill more"}}
 	s, _ = CRAG(r, llm, &echoGenerator{}, AnswerWhenExhausted()).Run(context.Background(), "q")
 	if s.Abstained || s.Answer.Text != "a b " {
 		t.Errorf("want an answer from pooled evidence: %+v", s.Answer)
@@ -160,7 +160,7 @@ func TestCRAG_GraderFailureFailsOpen(t *testing.T) {
 
 func TestCRAG_RepeatSearchIsNotRetried(t *testing.T) {
 	r := &fakeRetriever{index: map[string][]string{"q": {"a"}}}
-	s, _ := CRAG(r, &scriptedLLM{replies: []string{"INSUFFICIENT\nQ"}}, &echoGenerator{}, MaxHops(5)).Run(context.Background(), "q")
+	s, _ := CRAG(r, &scriptedLLM{replies: []string{"NONE\nQ"}}, &echoGenerator{}, MaxHops(5)).Run(context.Background(), "q")
 	if s.Hops != 1 || !s.Abstained {
 		t.Errorf("suggesting the same search again must not loop: hops=%d", s.Hops)
 	}
@@ -168,7 +168,7 @@ func TestCRAG_RepeatSearchIsNotRetried(t *testing.T) {
 
 func TestRetrievePassesHistoryOnFirstHopOnly(t *testing.T) {
 	r := &fakeRetriever{index: map[string][]string{"q": {"a"}, "more": {"b"}}}
-	llm := &scriptedLLM{replies: []string{"INSUFFICIENT\nmore", "SUFFICIENT"}}
+	llm := &scriptedLLM{replies: []string{"NONE\nmore", "1"}}
 	hist := []ragout.Turn{{Role: "user", Content: "earlier"}}
 	if _, err := CRAG(r, llm, &echoGenerator{}).Run(context.Background(), "q", WithHistory(hist)); err != nil {
 		t.Fatal(err)
@@ -178,24 +178,51 @@ func TestRetrievePassesHistoryOnFirstHopOnly(t *testing.T) {
 	}
 }
 
-func TestParseVerdict(t *testing.T) {
+func TestParseGrade(t *testing.T) {
 	for _, tc := range []struct {
-		reply   string
-		verdict Verdict
-		missing string
-		ok      bool
+		reply    string
+		relevant []int
+		missing  string
+		ok       bool
 	}{
-		{"SUFFICIENT", Sufficient, "", true},
-		{"**Sufficient.**", Sufficient, "", true},
-		{"INSUFFICIENT\nquery: raft election timeout", Insufficient, "raft election timeout", true},
-		{"Not sufficient: leader term length", Insufficient, "leader term length", true},
-		{"<think>hmm</think>\n1. INSUFFICIENT\n2. \"paxos phases\"", Insufficient, "paxos phases", true},
-		{"The answer is 42.", Ungraded, "", false},
+		{"2, 5", []int{1, 4}, "", true},
+		{"Passages 3 and 1.", []int{2, 0}, "", true},
+		{"**1**", []int{0}, "", true},
+		{"9, 2", []int{1}, "", true}, // 9 is out of range
+		{"NONE\nquery: raft election timeout", nil, "raft election timeout", true},
+		{"NONE\n\nA different search query that might find the answer could be: \"Ragout enterprise license cost\"", nil, "Ragout enterprise license cost", true},
+		{"<think>hmm</think>\nNONE\n1. \"paxos phases\"", nil, "paxos phases", true},
+		{"NONE\nWhich passages contain information that helps?", nil, "", true},
+		{"NONE", nil, "", true},
+		{"The answer is in the docs.", nil, "", false},
+		{"9", nil, "", false},
 	} {
-		v, m, ok := parseVerdict(tc.reply)
-		if v != tc.verdict || m != tc.missing || ok != tc.ok {
-			t.Errorf("parseVerdict(%q) = %v, %q, %v", tc.reply, v, m, ok)
+		rel, m, ok := parseGrade(tc.reply, 5)
+		if !slices.Equal(rel, tc.relevant) || m != tc.missing || ok != tc.ok {
+			t.Errorf("parseGrade(%q) = %v, %q, %v", tc.reply, rel, m, ok)
 		}
+	}
+}
+
+func TestGradePromotesRelevantEvidenceAndSeesHistory(t *testing.T) {
+	llm := &scriptedLLM{replies: []string{"3, 1"}}
+	s := &State{Question: "how do I turn it off?", Standalone: "how do I turn it off?",
+		History: []ragout.Turn{{Role: "user", Content: "tell me about chunk context"}}}
+	for _, id := range []string{"a", "b", "c", "d"} {
+		s.Evidence = append(s.Evidence, ragout.ScoredChunk{Chunk: ragout.Chunk{ID: id}})
+	}
+	if err := Grade(llm).Run(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	for _, c := range s.Evidence {
+		order = append(order, c.Chunk.ID)
+	}
+	if s.Verdict != Sufficient || !slices.Equal(order, []string{"c", "a", "b", "d"}) {
+		t.Errorf("verdict %v, evidence order %v; want relevant c, a first", s.Verdict, order)
+	}
+	if !strings.Contains(llm.prompts[0], "Conversation so far:\nuser: tell me about chunk context") {
+		t.Errorf("a follow-up must be graded with its history:\n%s", llm.prompts[0])
 	}
 }
 
@@ -284,7 +311,7 @@ func TestFlowRoutingAndLimits(t *testing.T) {
 
 func TestCustomizingCRAG(t *testing.T) {
 	r := &fakeRetriever{index: map[string][]string{"q": {"a", "b", "c"}}}
-	f := CRAG(r, &scriptedLLM{replies: []string{"SUFFICIENT"}}, &echoGenerator{})
+	f := CRAG(r, &scriptedLLM{replies: []string{"1"}}, &echoGenerator{})
 
 	// Add a step of your own, and drop grading entirely for a plain pipeline.
 	keepTwo := StepFunc(func(_ context.Context, s *State) error {
