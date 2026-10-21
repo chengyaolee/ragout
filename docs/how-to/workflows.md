@@ -37,7 +37,7 @@ retrieve -> grade -+-> generate -> end            (sufficient, or the grader fai
 
 The grader can be a smaller, cheaper model than the generator. If it fails or replies in a way that cannot be read, the run continues as a plain retrieve-and-answer and the error lands in `State.Errors`. A grader outage degrades the loop instead of breaking it.
 
-Grading relevance passage by passage, rather than asking "is this enough to answer?", is a deliberate choice. On the docs benchmark, a 3B model asked about sufficiency said no to 27 of 42 answerable questions, usually with the answer already retrieved. Asked about relevance, the same model abstained on 6 of 42 and still on 3 of 6 unanswerable questions. If you replace the grader, keep the judgment that simple.
+Grading relevance passage by passage, rather than asking "is this enough to answer?", is a deliberate choice. On the docs benchmark, a 3B model asked about sufficiency said no to 27 of 42 answerable questions, usually with the answer already retrieved. Asked about relevance, the same model abstained on 5 of 42 and still on 3 of 6 unanswerable questions. If you replace the grader, keep the judgment that simple.
 
 Per run, `flow.WithHistory(turns)` passes the conversation (the first retrieval uses it, so `transform.Condense` can resolve a follow-up), and `flow.WithTokens(fn)` streams the answer as it is generated.
 

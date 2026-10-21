@@ -169,7 +169,10 @@ func main() {
 		run = append(run, c)
 	}
 
-	rep := &report{suite: s, started: time.Now(), ingest: map[string]ingestStat{}}
+	// Record the code being measured now, not when the report is written: the tree can
+	// change during a long run. "-dirty" means uncommitted changes were compiled in.
+	commit, _ := exec.Command("git", "describe", "--always", "--dirty").Output()
+	rep := &report{suite: s, started: time.Now(), commit: strings.TrimSpace(string(commit)), ingest: map[string]ingestStat{}}
 	indexes := map[string]*index{}
 	for _, c := range run {
 		ix, ok := indexes[c.variant]
@@ -630,18 +633,18 @@ func download(url, path string) error {
 type report struct {
 	suite   suite
 	started time.Time
+	commit  string
 	ingest  map[string]ingestStat
 	rows    []row
 }
 
 func (r *report) markdown() string {
 	var b strings.Builder
-	commit, _ := exec.Command("git", "rev-parse", "--short", "HEAD").Output()
 	k := r.suite.k
 	fmt.Fprintf(&b, "# Retrieval evaluation: %s\n\n", r.suite.name)
 	fmt.Fprintf(&b, "%s\n\n", r.suite.note)
 	fmt.Fprintf(&b, "| Setting | Value |\n| --- | --- |\n")
-	fmt.Fprintf(&b, "| Date | %s |\n| Commit | `%s` |\n", r.started.Format("2006-01-02"), strings.TrimSpace(string(commit)))
+	fmt.Fprintf(&b, "| Date | %s |\n| Commit | `%s` |\n", r.started.Format("2006-01-02"), r.commit)
 	fmt.Fprintf(&b, "| Questions scored | %d |\n| Cut-off k | %d |\n", r.rows[0].report.Cases, k)
 	fmt.Fprintf(&b, "| Chunking | character, %d bytes, %d overlap |\n", r.suite.chunkSize, r.suite.overlap)
 	fmt.Fprintf(&b, "| Embedder | `%s` via Ollama (no task prefixes) |\n| LLM methods | `%s` via Ollama, temperature 0, thinking off |\n", *embedModel, *llmModel)
