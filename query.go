@@ -146,9 +146,12 @@ func (e *Engine) retrieve(ctx context.Context, query string, params QueryParams,
 	answer.Searches = searches
 	answer.TransformErr = transformErr
 
-	candidates, err := e.retrieveCandidates(ctx, question, searches, params)
+	candidates, denseErr, err := e.retrieveCandidates(ctx, question, searches, params)
 	if err != nil {
 		return answer, err
+	}
+	if denseErr != nil {
+		answer.DenseErr = fmt.Errorf("dense retrieval: %w", denseErr)
 	}
 	// Candidates are backed by a pooled buffer that's about to be recycled; clone the
 	// values out so Answer.Retrieved stays valid for the caller.
@@ -227,8 +230,9 @@ func (e *Engine) rewrite(ctx context.Context, query string, history []Turn) (que
 func normalize(s string) string { return strings.ToLower(strings.Join(strings.Fields(s), " ")) }
 
 // retrieveCandidates runs every search against the indexes it targets, concurrently,
-// fuses the result lists, and reranks against question.
-func (e *Engine) retrieveCandidates(ctx context.Context, question string, searches []Search, params QueryParams) (candidates []ScoredChunk, err error) {
+// fuses the result lists, and reranks against question. denseErr is the dense failure
+// the query fell back from under WithDenseFailOpen.
+func (e *Engine) retrieveCandidates(ctx context.Context, question string, searches []Search, params QueryParams) (candidates []ScoredChunk, denseErr error, err error) {
 	// lists[2i] holds search i's dense hits, lists[2i+1] its sparse hits.
 	lists := make([][]ScoredChunk, 2*len(searches))
 	releaseAll := func() {
@@ -254,7 +258,13 @@ func (e *Engine) retrieveCandidates(ctx context.Context, question string, search
 			}
 		}
 		if len(texts) > 0 {
-			g.Go(func() error {
+			g.Go(func() (err error) {
+				defer func() {
+					// Fall back to sparse unless the query itself was cancelled.
+					if err != nil && e.denseFailOpen && e.iStore != nil && ctx.Err() == nil {
+						denseErr, err = err, nil
+					}
+				}()
 				// One embedding call for every dense search.
 				embedStart := time.Now()
 				_, embedSpan := startSpan(ctx, "query.embed",
@@ -281,15 +291,15 @@ func (e *Engine) retrieveCandidates(ctx context.Context, question string, search
 						_, denseSpan := startSpan(denseCtx, "query.dense_search",
 							attribute.Int("top_k", params.TopKRecall),
 						)
-						res, denseErr := e.vStore.SearchDense(denseCtx, vecs[j], params.TopKRecall, params.Filter)
+						res, searchErr := e.vStore.SearchDense(denseCtx, vecs[j], params.TopKRecall, params.Filter)
 						QueryDuration.WithLabelValues("dense").Observe(time.Since(denseStart).Seconds())
-						if denseErr != nil {
-							endSpan(denseSpan, denseErr)
-							return fmt.Errorf("dense search failed: %w", denseErr)
+						if searchErr != nil {
+							endSpan(denseSpan, searchErr)
+							return fmt.Errorf("dense search failed: %w", searchErr)
 						}
 						denseSpan.SetAttributes(attribute.Int("candidates_found", len(res)))
 						endSpan(denseSpan, nil)
-						lists[2*i] = res
+						lists[2*i] = aboveFloor(res, e.minDenseScore)
 						return nil
 					})
 				}
@@ -325,7 +335,7 @@ func (e *Engine) retrieveCandidates(ctx context.Context, question string, search
 
 	if err = g.Wait(); err != nil {
 		releaseAll()
-		return nil, err
+		return nil, nil, err
 	}
 
 	var hits []RankedList
@@ -369,18 +379,37 @@ func (e *Engine) retrieveCandidates(ctx context.Context, question string, search
 		endSpan(rrSpan, err)
 		if err != nil {
 			releaseCandidates(candidates)
-			return nil, fmt.Errorf("reranking failed: %w", err)
+			return nil, nil, fmt.Errorf("reranking failed: %w", err)
 		}
 		if !sameBacking(ranked, candidates) {
 			releaseCandidates(candidates)
 		}
-		return ranked, nil
+		return ranked, denseErr, nil
 	}
 
 	if len(candidates) > params.TopNRerank {
 		candidates = candidates[:params.TopNRerank]
 	}
-	return candidates, nil
+	return candidates, denseErr, nil
+}
+
+// aboveFloor drops hits whose DenseScore is below min, in place. A floor of 0 or less
+// keeps every hit.
+func aboveFloor(res []ScoredChunk, min float64) []ScoredChunk {
+	if min <= 0 {
+		return res
+	}
+	kept := res[:0]
+	for _, sc := range res {
+		if sc.DenseScore >= min {
+			kept = append(kept, sc)
+		}
+	}
+	if len(kept) == 0 {
+		releaseCandidates(res)
+		return nil
+	}
+	return kept
 }
 
 func termsMatched(store IndexStore, query string) int {

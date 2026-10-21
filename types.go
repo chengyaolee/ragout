@@ -75,6 +75,10 @@ type Answer struct {
 	// TransformErr is the QueryTransformer's error or timeout, if any. The query still
 	// ran, with whatever the transformer returned (at least the original question).
 	TransformErr error
+	// DenseErr is the embedding or vector store error the query fell back from when
+	// WithDenseFailOpen is set. The query still ran, on BM25 and any dense search
+	// that succeeded.
+	DenseErr error
 }
 
 // Turn is one message of a conversation, passed per query with WithHistory.

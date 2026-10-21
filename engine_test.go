@@ -431,3 +431,106 @@ func TestEngine_QueryWithFilter(t *testing.T) {
 		t.Fatalf("expected only marketing results, got %s", gotMkt.Text)
 	}
 }
+
+// fixedEmbedder maps each text to a set vector, or fails every call when err is set.
+// cancel, if set, runs first, as when the caller gives up mid-query.
+type fixedEmbedder struct {
+	vecs   map[string][]float32
+	err    error
+	cancel context.CancelFunc
+}
+
+func (f fixedEmbedder) EmbedBatch(_ context.Context, texts []string) ([][]float32, error) {
+	if f.cancel != nil {
+		f.cancel()
+	}
+	if f.err != nil {
+		return nil, f.err
+	}
+	out := make([][]float32, len(texts))
+	for i, t := range texts {
+		out[i] = f.vecs[t]
+	}
+	return out, nil
+}
+
+func (f fixedEmbedder) Dimension() int { return 2 }
+
+// denseFloorEngine indexes one chunk about channels at vector (1, 0) in both stores.
+func denseFloorEngine(t *testing.T, emb ragout.Embedder, opts ...ragout.EngineOption) *ragout.Engine {
+	t.Helper()
+	ctx := context.Background()
+	chunks := []ragout.Chunk{{ID: "c1", Content: hybridFacts, Embedding: []float32{1, 0}}}
+	vs, idx := store.NewVectorStore(), store.NewBM25Index()
+	if err := vs.Upsert(ctx, chunks); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.Index(ctx, chunks); err != nil {
+		t.Fatal(err)
+	}
+	e, err := ragout.NewEngine(append([]ragout.EngineOption{
+		ragout.WithEmbedder(emb),
+		ragout.WithVectorStore(vs),
+		ragout.WithIndexStore(idx),
+	}, opts...)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
+func TestEngine_MinDenseScore(t *testing.T) {
+	ctx := context.Background()
+	const unrelated, related = "weather tomorrow", "ownership between goroutines"
+	emb := fixedEmbedder{vecs: map[string][]float32{
+		unrelated: {0.1, 1}, // cosine ~0.1 with the chunk
+		related:   {1, 0.1}, // cosine ~0.99, and it shares terms with the chunk
+	}}
+
+	// Without a floor, the nearest chunk comes back however unrelated.
+	if ans, err := denseFloorEngine(t, emb).Retrieve(ctx, unrelated); err != nil || len(ans.Retrieved) != 1 {
+		t.Fatalf("no floor: got %d hits, err %v; want 1", len(ans.Retrieved), err)
+	}
+
+	e := denseFloorEngine(t, emb, ragout.WithMinDenseScore(0.5))
+	if _, err := e.Retrieve(ctx, unrelated); !errors.Is(err, ragout.ErrNoResults) {
+		t.Fatalf("floor, unrelated: err = %v, want ErrNoResults", err)
+	}
+	if ans, err := e.Retrieve(ctx, related); err != nil || len(ans.Retrieved) != 1 {
+		t.Fatalf("floor, related: got %d hits, err %v; want 1", len(ans.Retrieved), err)
+	}
+
+	// A BM25 match survives a dense score below the floor.
+	emb.vecs[related] = []float32{0, 1}
+	ans, err := e.Retrieve(ctx, related)
+	if err != nil || len(ans.Retrieved) != 1 || ans.Retrieved[0].SparseScore == 0 {
+		t.Fatalf("floor, lexical match: got %+v, err %v; want the sparse hit", ans.Retrieved, err)
+	}
+}
+
+func TestEngine_DenseFailOpen(t *testing.T) {
+	ctx := context.Background()
+	down := errors.New("ollama down")
+	emb := fixedEmbedder{err: down}
+	const q = "ownership between goroutines"
+
+	if _, err := denseFloorEngine(t, emb).Retrieve(ctx, q); !errors.Is(err, down) {
+		t.Fatalf("strict: err = %v, want the embed error", err)
+	}
+
+	e := denseFloorEngine(t, emb, ragout.WithDenseFailOpen())
+	ans, err := e.Retrieve(ctx, q)
+	if err != nil {
+		t.Fatalf("fail open: %v", err)
+	}
+	if len(ans.Retrieved) != 1 || !errors.Is(ans.DenseErr, down) {
+		t.Fatalf("fail open: got %d hits, DenseErr %v; want 1 sparse hit and the embed error", len(ans.Retrieved), ans.DenseErr)
+	}
+
+	// A query cancelled during embedding fails instead of falling back.
+	cancelled, cancel := context.WithCancel(ctx)
+	e = denseFloorEngine(t, fixedEmbedder{err: context.Canceled, cancel: cancel}, ragout.WithDenseFailOpen())
+	if _, err := e.Retrieve(cancelled, q); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled: err = %v, want context.Canceled", err)
+	}
+}

@@ -46,6 +46,24 @@ func WithFusion(f FusionStrategy) EngineOption {
 	return func(e *Engine) { e.fusion = f }
 }
 
+// WithMinDenseScore drops dense hits whose DenseScore (cosine similarity, or the
+// store's equivalent) is below min, before fusion. A vector store always returns its
+// nearest chunks, however unrelated; with a floor, a question nothing matches gets
+// ErrNoResults instead. Sparse hits are not affected. The right floor depends on the
+// embedding model, so calibrate it on your data (see the eval package). The default
+// (0) keeps every hit.
+func WithMinDenseScore(min float64) EngineOption {
+	return func(e *Engine) { e.minDenseScore = min }
+}
+
+// WithDenseFailOpen makes a query fall back to BM25 when embedding the question or
+// searching the vector store fails, instead of failing the query. The error is
+// reported in Answer.DenseErr. It has no effect without an IndexStore, and Ingest is
+// never affected: a chunk that could not be embedded is not written to either store.
+func WithDenseFailOpen() EngineOption {
+	return func(e *Engine) { e.denseFailOpen = true }
+}
+
 // WithExpander rewrites the final candidates before generation (e.g. expand.Neighbors).
 func WithExpander(x Expander) EngineOption {
 	return func(e *Engine) { e.expander = x }

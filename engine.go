@@ -35,6 +35,8 @@ type Engine struct {
 	transformTimeout time.Duration  // 0: the transformer runs under the query's own deadline
 	replaceSource    bool           // Ingest removes the source's previous chunks after writing
 	fusion           FusionStrategy // default: WeightedRRF(rrfK, DefaultRewriteWeight)
+	minDenseScore    float64        // dense hits scoring below this are dropped (0: off)
+	denseFailOpen    bool           // a failed dense search falls back to sparse
 
 	topKRecall       int // Number of candidates recalled from each store (default: 50)
 	topNRerank       int // Number of candidates passed to generator (default: 5)
