@@ -32,6 +32,14 @@ engine, err := ragout.NewEngine(
 
 HyDE helps most with weaker embedders. A model that does not know your private data can write a misleading passage, so measure it before relying on it.
 
+On the [docs benchmark](../../eval/results/docs.md), with a 3B model:
+- **Condense** is the clear win for conversations.
+- **HyDE** gave a small gain.
+- **MultiQuery** was neutral.
+- **Decompose** lowered hit rate even on compound questions.
+
+Results on your data and model will differ; [measure](evaluate.md) before turning one on.
+
 ## Conversations
 
 The engine keeps no state between queries. Pass the earlier turns with each call, oldest first:
@@ -49,7 +57,7 @@ answer, err := engine.Query(ctx, "and in 2023?", ragout.WithHistory([]ragout.Tur
 
 1. The standalone question is always searched, on every configured index. Rewrites are added to it, never substituted for it.
 2. Duplicate searches are dropped.
-3. Every dense text is embedded in one `EmbedBatch` call. Every search runs concurrently. All result lists are fused once, with reciprocal rank fusion by default (`WithFusion` replaces it).
+3. Every dense text is embedded in one `EmbedBatch` call. Every search runs concurrently. All result lists are fused once. By default the transformer's added searches count half as much as the question's own, so rephrasings refine the ranking instead of outvoting the question (`WithFusion` changes this).
 4. The reranker and the generator see the standalone question.
 
 `Answer.Question` is that standalone question. `Answer.Searches` lists every search requested, the question first.

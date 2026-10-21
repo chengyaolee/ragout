@@ -43,7 +43,7 @@ Per-query options override the engine defaults for that call only: `WithQueryFil
 | Embed workers | 8 | `WithEmbedConcurrency` |
 | Chunk context | Title and section | `WithContextualizer` |
 | Query rewrite | None | `WithQueryTransformer` |
-| Fusion | `RRF(k)` | `WithFusion` |
+| Fusion | `WeightedRRF(k, 0.5)` (equal to RRF without rewrites) | `WithFusion` |
 | Expansion | None | `WithExpander` |
 
 Values of 0 or less are ignored, and the default stays.

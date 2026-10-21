@@ -38,7 +38,9 @@ engine, err := ragout.NewEngine(
 | `WithReplaceSource` | `Ingest` replaces a source instead of adding to it. See [Update and delete sources](../how-to/update-sources.md). |
 | `WithQueryTransformer` | Rewrites each question before retrieval. Default none. See [Rewrite questions](../how-to/query-rewrite.md). |
 | `WithTransformTimeout` | Deadline for the transformer; on timeout the query falls back to the original question. Default none. |
-| `WithFusion` | Replaces the default `RRF(k)` fusion of result lists. |
+| `WithFusion` | Replaces the default fusion, `WeightedRRF(k, 0.5)`: rank fusion in which a query transformer's added searches count half as much as the question's own. `RRF(k)` weights every list equally. |
+| `WithMinDenseScore` | Drops dense hits whose `DenseScore` is below the floor, before fusion. A vector store always returns its nearest chunks, however unrelated; with a floor, a question nothing matches gets `ErrNoResults`. BM25 hits are not affected. The right value depends on the embedding model: calibrate it on your data. Default 0, off. |
+| `WithDenseFailOpen` | When embedding the question or the vector search fails, the query falls back to BM25 and reports the error in `Answer.DenseErr`. Needs an index store. Ingest is unaffected. Default off: the query fails. |
 | `WithExpander` | Widens hits before generation. Default none. See [Widen hits](../how-to/expand-hits.md). |
 | `WithTopKRecall` | Hits requested from each store. Default 50. |
 | `WithTopNRerank` | Hits kept after rerank, or the cut when there is no reranker. Default 5. |
@@ -78,6 +80,7 @@ These apply to one call.
 | `Question` | The standalone question that was reranked and answered. |
 | `Searches` | Every search requested, the question first. |
 | `TransformErr` | The query transformer's error or timeout, if any. The query still ran. |
+| `DenseErr` | With `WithDenseFailOpen`, the embedding or vector store error the query fell back from. The query still ran on BM25. |
 
 ## Errors
 
@@ -101,7 +104,7 @@ These apply to one call.
 | `ErrNoSource` | `DeleteSource` with an empty name. |
 | `ErrDeleteUnsupported` | A configured store does not implement `SourceDeleter`. |
 
-Storage and HTTP failures are wrapped with `fmt.Errorf` and the stage name (`ragout.Ingest: ...`, `embed query failed`, `dense search failed`, `reranking failed`, `expansion failed`). A query transformer's error is not returned: it lands in `Answer.TransformErr`.
+Storage and HTTP failures are wrapped with `fmt.Errorf` and the stage name (`ragout.Ingest: ...`, `embed query failed`, `dense search failed`, `reranking failed`, `expansion failed`). A query transformer's error is not returned: it lands in `Answer.TransformErr`. With `WithDenseFailOpen`, neither is a dense failure: it lands in `Answer.DenseErr`.
 
 ## Interfaces
 
@@ -148,7 +151,7 @@ type QueryTransformer interface {
     Transform(ctx context.Context, question string, history []Turn) (Rewrite, error)
 }
 type FusionStrategy interface {
-    Fuse(lists [][]ScoredChunk, topK int) []ScoredChunk
+    Fuse(lists []RankedList, topK int) []ScoredChunk // each list says its search, index, and whether it was a rewrite
 }
 type Expander interface {
     Expand(ctx context.Context, candidates []ScoredChunk) ([]ScoredChunk, error)

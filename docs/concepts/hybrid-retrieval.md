@@ -34,7 +34,7 @@ With a query transformer, each search adds its own dense and sparse lists, and t
 
 ## Choosing the fusion
 
-Reciprocal rank fusion is the default, as `ragout.RRF(k)`. `WithFusion` replaces it with any `ragout.FusionStrategy`, which receives every result list and returns one ranking.
+The default is `ragout.WeightedRRF(k, ragout.DefaultRewriteWeight)`. With a single search it is plain reciprocal rank fusion. With a query transformer, the transformer's added searches count half as much as the question's own, so several rephrasings cannot outvote the question. On the docs benchmark, equal weights lowered MultiQuery's hit rate below the no-rewrite baseline, and half weight brought it back. `ragout.RRF(k)` weights every list equally. `WithFusion` takes any `ragout.FusionStrategy`, which receives every result list labeled with its search, its index, and whether it was a rewrite.
 
 `reranker.ConvexScoreCombination` blends sigmoid-normalized dense and sparse scores with an alpha weight. `MinMaxNormalization` and `LogisticSigmoidNormalization` are the scaling helpers next to it. A built-in score-blending strategy is a [roadmap](../roadmap.md) item: with several searches per question there is no single dense and sparse score to blend.
 

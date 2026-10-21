@@ -8,28 +8,32 @@ The engine accepts any `VectorStore` and any `IndexStore`. This release ships an
 
 `store.NewVectorStore` and `store.NewBM25Index` need no server. They are safe for concurrent ingest and query. They are empty after a restart unless you snapshot them.
 
+Both stores snapshot the same list of chunks, so one file restores both. Save the vector store and load that file into each store:
+
 ```go
 vectors := store.NewVectorStore()
 index := store.NewBM25Index()
 
-if err := store.LoadFile("vectors.gob", vectors); err != nil {
-    return err
-}
-if err := store.LoadFile("bm25.gob", index); err != nil {
-    return err
+// Name the file after the embedding model, so switching models starts a fresh index.
+const snapshot = "chunks.nomic-embed-text.gob"
+for _, s := range []store.Persistable{vectors, index} {
+    if err := store.LoadFile(snapshot, s); err != nil {
+        return err
+    }
 }
 
 // ... build the engine with these stores, ingest, query ...
 
-if err := store.SaveFile("vectors.gob", vectors); err != nil {
-    return err
-}
-if err := store.SaveFile("bm25.gob", index); err != nil {
+if err := store.SaveFile(snapshot, vectors); err != nil {
     return err
 }
 ```
 
-`LoadFile` on a missing path returns nil and leaves the store as it is. `SaveFile` writes a temp file and renames it into place.
+`LoadFile` on a missing path returns nil and leaves the store as it is. `SaveFile` writes a temp file and renames it into place, so a single snapshot is never half-written. Two files, one per store, can be left out of step by a crash between the two saves.
+
+The snapshot does not record which model made the vectors. A model with a different dimension fails queries with `ErrDimensionMismatch`. A model with the same dimension silently compares vectors from two models. Keep the model in the file name as above, and re-ingest from your source data after a switch.
+
+Each save rewrites the whole file, and the stores live in one process. For a corpus that outgrows that, use Chroma or Qdrant.
 
 Snapshots are gob-encoded. Metadata values should be strings, numbers, bools, and slices or maps of those. Other concrete types must be registered with `gob.Register` before save and load.
 

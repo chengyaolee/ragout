@@ -60,7 +60,22 @@ ragout.WithReranker(reranker.NewHTTP("http://localhost:8081/v1/rerank",
     reranker.WithModel(reranker.Qwen3Reranker4B)))
 ```
 
-Rerank a pool smaller than the recall depth if latency matters: `WithTopKRecall(30)` sends 30 candidates instead of 50. Measured effects on two question sets are in [eval/results](../../eval/results/). Server setup, request shapes, and the vLLM variant are in [Rerankers](../components/rerankers.md).
+Rerank a pool smaller than the recall depth if latency matters: `WithTopKRecall(30)` sends 30 candidates instead of 50. Server setup, request shapes, and the vLLM variant are in [Rerankers](../components/rerankers.md).
+
+### Which one
+
+A reranker was the largest single improvement in the [docs benchmark](../../eval/results/docs.md). Results for the 30 fused candidates per question, on an Apple Silicon laptop:
+
+| | Hit@5 | MRR | Time per question |
+| --- | --- | --- | --- |
+| No reranker (default) | 0.738 | 0.63 | under 0.1 s |
+| bge-reranker-v2-m3 | 0.881 | 0.65 | about 1 s |
+| Qwen3-Reranker-4B | 0.905 | 0.78 | about 8 s |
+
+- **Start with bge-reranker-v2-m3.** It recovers most of the gain at a latency that suits interactive use.
+- **Use Qwen3-Reranker-4B** when ranking quality matters more than speed: offline jobs, or a GPU server where it runs much faster.
+
+[SciFact results](../../eval/results/scifact.md) show the same comparison on a public benchmark.
 
 ## Next
 

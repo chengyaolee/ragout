@@ -48,6 +48,8 @@ ragout.WithContextualizer(contextual.New(llm,
 
 It costs one model call per chunk at ingest and nothing at query time.
 
+**Measure before switching.** On the [docs benchmark](../../eval/results/docs.md), LLM context scored the same hit rate as the free title-and-section default (0.738 at k=5). It took several minutes to index 231 chunks with a 3B model, against seconds for the default. Its gain is likely larger on documents whose chunks lack headings, like the revenue example above, and with a stronger model.
+
 - **Shared prefix:** a document that fits in the window is sent whole, as a prefix that is identical on every call. OpenAI and Ollama reuse a repeated prefix automatically. The first chunk is sent alone so the cache exists before the rest run.
 - **Larger documents:** each call gets a window of the document around its chunk instead. Cost per chunk stays bounded, but the prefix differs per chunk, so it is not cached.
 - **Sections:** Markdown, HTML, and DOCX arrive split by heading, so the "document" the model sees is the chunk's section.

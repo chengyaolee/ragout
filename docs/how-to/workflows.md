@@ -25,7 +25,7 @@ retrieve -> grade -+-> generate -> end            (sufficient, or the grader fai
 ```
 
 1. **Retrieve** calls the engine's `Retrieve`, so the query transformer, fusion, reranker, and expander all apply. Evidence is pooled across hops and de-duplicated.
-2. **Grade** asks a model whether the evidence answers the question. If not, it names what is missing as a short search query. Any chat model works, because the reply is read as plain lines.
+2. **Grade** asks a model which retrieved passages help answer the question, as the CRAG paper grades each document. If none help, the model suggests a different search. Any chat model works, because the reply is read as plain lines. A follow-up is graded together with its conversation.
 3. **Refine** makes that search the next query. A search that already ran is not repeated.
 4. **Generate** writes the cited answer. **Abstain** returns a fixed message instead.
 
@@ -36,6 +36,8 @@ retrieve -> grade -+-> generate -> end            (sufficient, or the grader fai
 | `flow.AbstainMessage(msg)` | Replaces the default "I couldn't find enough information..." text. |
 
 The grader can be a smaller, cheaper model than the generator. If it fails or replies in a way that cannot be read, the run continues as a plain retrieve-and-answer and the error lands in `State.Errors`. A grader outage degrades the loop instead of breaking it.
+
+Grading relevance passage by passage, rather than asking "is this enough to answer?", is a deliberate choice. On the docs benchmark, a 3B model asked about sufficiency said no to 27 of 42 answerable questions, usually with the answer already retrieved. Asked about relevance, the same model abstained on 6 of 42 and still on 3 of 6 unanswerable questions. If you replace the grader, keep the judgment that simple.
 
 Per run, `flow.WithHistory(turns)` passes the conversation (the first retrieval uses it, so `transform.Condense` can resolve a follow-up), and `flow.WithTokens(fn)` streams the answer as it is generated.
 
