@@ -40,7 +40,8 @@ func WithReplaceSource() EngineOption {
 	return func(e *Engine) { e.replaceSource = true }
 }
 
-// WithFusion replaces the default RRF(WithRRFK) fusion of retrieval result lists.
+// WithFusion replaces the default fusion of retrieval result lists,
+// WeightedRRF(WithRRFK value, DefaultRewriteWeight). RRF(k) gives every list equal weight.
 func WithFusion(f FusionStrategy) EngineOption {
 	return func(e *Engine) { e.fusion = f }
 }

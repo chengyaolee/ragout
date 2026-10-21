@@ -328,22 +328,22 @@ func (e *Engine) retrieveCandidates(ctx context.Context, question string, search
 		return nil, err
 	}
 
-	var hits [][]ScoredChunk
-	for _, l := range lists {
+	var hits []RankedList
+	for i, l := range lists {
 		if len(l) > 0 {
-			hits = append(hits, l)
+			hits = append(hits, RankedList{Search: searches[i/2], Rewrite: i >= 2, Dense: i%2 == 0, Hits: l})
 		}
 	}
 	switch len(hits) {
 	case 0:
 	case 1:
 		// A single ranking needs no fusion.
-		candidates = hits[0]
+		candidates = hits[0].Hits
 	default:
 		fuseStart := time.Now()
 		attrs := []attribute.KeyValue{attribute.Int("lists", len(hits))}
-		if _, isRRF := e.fusion.(rrf); isRRF {
-			attrs = append(attrs, attribute.Int("rrf_k", e.rrfK))
+		if r, isRRF := e.fusion.(rrf); isRRF {
+			attrs = append(attrs, attribute.Int("rrf_k", r.k), attribute.Float64("rewrite_weight", r.rewrite))
 		}
 		_, fuseSpan := startSpan(ctx, "query.rrf_fusion", attrs...)
 		candidates = e.fusion.Fuse(hits, params.TopKRecall)
@@ -351,8 +351,8 @@ func (e *Engine) retrieveCandidates(ctx context.Context, question string, search
 		endSpan(fuseSpan, nil)
 		QueryDuration.WithLabelValues("fusion").Observe(time.Since(fuseStart).Seconds())
 		for _, l := range hits {
-			if !sameBacking(l, candidates) {
-				releaseCandidates(l)
+			if !sameBacking(l.Hits, candidates) {
+				releaseCandidates(l.Hits)
 			}
 		}
 	}

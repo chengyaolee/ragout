@@ -34,7 +34,7 @@ type Engine struct {
 	transformer      QueryTransformer
 	transformTimeout time.Duration  // 0: the transformer runs under the query's own deadline
 	replaceSource    bool           // Ingest removes the source's previous chunks after writing
-	fusion           FusionStrategy // default: RRF(rrfK)
+	fusion           FusionStrategy // default: WeightedRRF(rrfK, DefaultRewriteWeight)
 
 	topKRecall       int // Number of candidates recalled from each store (default: 50)
 	topNRerank       int // Number of candidates passed to generator (default: 5)
@@ -58,7 +58,7 @@ func NewEngine(options ...EngineOption) (*Engine, error) {
 	}
 
 	if e.fusion == nil {
-		e.fusion = RRF(e.rrfK)
+		e.fusion = WeightedRRF(e.rrfK, DefaultRewriteWeight)
 	}
 
 	// Validation: At least one store must exist

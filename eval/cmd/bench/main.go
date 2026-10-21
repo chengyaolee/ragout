@@ -56,6 +56,7 @@ var (
 	limit      = flag.Int("limit", 0, "use at most this many questions (0: all)")
 	only       = flag.String("configs", "", "comma-separated config IDs to run (default: all)")
 	outPath    = flag.String("out", "", "write the markdown report here (default: stdout)")
+	rewriteW   = flag.Float64("rewrite-weight", 0, "fuse with WeightedRRF(60, w) instead of the engine default (0: default)")
 )
 
 // suite is a corpus plus questions.
@@ -314,6 +315,9 @@ func runConfig(ctx context.Context, s suite, c config, ix *index, r *resources) 
 		opts = append(opts, ragout.WithEmbedder(r.emb), ragout.WithVectorStore(ix.vs), ragout.WithIndexStore(ix.bm25))
 	}
 	opts = append(opts, c.opts(r)...)
+	if *rewriteW > 0 {
+		opts = append(opts, ragout.WithFusion(ragout.WeightedRRF(60, *rewriteW)))
+	}
 	if c.id == "neighbors" {
 		opts = append(opts, ragout.WithExpander(expand.Neighbors(ix.vs, 1)))
 	}

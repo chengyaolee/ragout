@@ -157,10 +157,10 @@ func TestRRFFusesManyLists(t *testing.T) {
 	c := func(id string, dense, sparse float64) ragout.ScoredChunk {
 		return ragout.ScoredChunk{Chunk: ragout.Chunk{ID: id}, DenseScore: dense, SparseScore: sparse}
 	}
-	lists := [][]ragout.ScoredChunk{
-		{c("a", -0.2, 0), c("b", -0.5, 0)},
-		{c("b", 0, 3.1)},
-		{c("b", 0.4, 0), c("c", 0.1, 0)},
+	lists := []ragout.RankedList{
+		{Dense: true, Hits: []ragout.ScoredChunk{c("a", -0.2, 0), c("b", -0.5, 0)}},
+		{Hits: []ragout.ScoredChunk{c("b", 0, 3.1)}},
+		{Dense: true, Rewrite: true, Hits: []ragout.ScoredChunk{c("b", 0.4, 0), c("c", 0.1, 0)}},
 	}
 	got := ragout.RRF(60).Fuse(lists, 2)
 	if len(got) != 2 || got[0].Chunk.ID != "b" || got[1].Chunk.ID != "a" {
@@ -274,4 +274,27 @@ func failures() float64 {
 	var m dto.Metric
 	_ = ragout.TransformFailuresTotal.Write(&m)
 	return m.GetCounter().GetValue()
+}
+
+func TestWeightedRRFDiscountsRewrites(t *testing.T) {
+	c := func(id string) ragout.ScoredChunk { return ragout.ScoredChunk{Chunk: ragout.Chunk{ID: id}} }
+	// The question's dense and BM25 lists both rank "q" first; three rewrites rank "r" first.
+	lists := []ragout.RankedList{
+		{Dense: true, Hits: []ragout.ScoredChunk{c("q")}},
+		{Hits: []ragout.ScoredChunk{c("q")}},
+		{Dense: true, Rewrite: true, Hits: []ragout.ScoredChunk{c("r")}},
+		{Dense: true, Rewrite: true, Hits: []ragout.ScoredChunk{c("r")}},
+		{Dense: true, Rewrite: true, Hits: []ragout.ScoredChunk{c("r")}},
+	}
+	if got := ragout.RRF(60).Fuse(lists, 1); got[0].Chunk.ID != "r" {
+		t.Errorf("at equal weight three rewrites outvote the question, got %s", got[0].Chunk.ID)
+	}
+	if got := ragout.WeightedRRF(60, 0.5).Fuse(lists, 1); got[0].Chunk.ID != "q" {
+		t.Errorf("weighted, the question's top hit should win, got %s", got[0].Chunk.ID)
+	}
+	// Without rewrites the two are identical.
+	plain := lists[:2]
+	if a, b := ragout.RRF(60).Fuse(plain, 1), ragout.WeightedRRF(60, 0.5).Fuse(plain, 1); a[0].Score != b[0].Score {
+		t.Errorf("no rewrites: %v vs %v", a[0].Score, b[0].Score)
+	}
 }

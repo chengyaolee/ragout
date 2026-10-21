@@ -162,10 +162,19 @@ type QueryTransformer interface {
 	Transform(ctx context.Context, question string, history []Turn) (Rewrite, error)
 }
 
-// FusionStrategy blends ranked candidate lists (best first) into one ranking of at
-// most topK. Each search contributes a dense and/or a sparse list, in search order.
+// RankedList is one search's hits from one index, best first.
+type RankedList struct {
+	Search  Search        // the search that produced it
+	Rewrite bool          // a query transformer's added search; false for the question itself
+	Dense   bool          // from the vector store; false means the BM25 index
+	Hits    []ScoredChunk // best first
+}
+
+// FusionStrategy blends ranked lists into one ranking of at most topK. Every search
+// contributes a dense and/or a sparse list, in search order, the question's first.
+// Lists with no hits are left out.
 type FusionStrategy interface {
-	Fuse(lists [][]ScoredChunk, topK int) []ScoredChunk
+	Fuse(lists []RankedList, topK int) []ScoredChunk
 }
 
 // HistoryGenerator is an optional Generator capability: answering with earlier turns
