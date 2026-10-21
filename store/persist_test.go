@@ -83,6 +83,31 @@ func TestVectorStore_SaveLoadFile(t *testing.T) {
 	}
 }
 
+// Both stores snapshot the same []Chunk, so one file can restore both.
+func TestBM25Index_LoadsVectorSnapshot(t *testing.T) {
+	ctx := context.Background()
+	vs := store.NewVectorStore()
+	if err := vs.Upsert(ctx, testChunks()); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "chunks.gob")
+	if err := store.SaveFile(path, vs); err != nil {
+		t.Fatal(err)
+	}
+
+	idx := store.NewBM25Index()
+	if err := store.LoadFile(path, idx); err != nil {
+		t.Fatalf("LoadFile into BM25Index: %v", err)
+	}
+	hits, err := idx.SearchSparse(ctx, "transformer networks", 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 || hits[0].Chunk.ID != "chunk-2" {
+		t.Fatalf("sparse hits = %+v, want chunk-2", hits)
+	}
+}
+
 func TestBM25Index_SaveLoadRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	idx := store.NewBM25Index()
