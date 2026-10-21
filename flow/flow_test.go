@@ -204,7 +204,7 @@ func TestParseGrade(t *testing.T) {
 	}
 }
 
-func TestGradePromotesRelevantEvidenceAndSeesHistory(t *testing.T) {
+func TestGradeKeepsOrderAndSeesHistory(t *testing.T) {
 	llm := &scriptedLLM{replies: []string{"3, 1"}}
 	s := &State{Question: "how do I turn it off?", Standalone: "how do I turn it off?",
 		History: []ragout.Turn{{Role: "user", Content: "tell me about chunk context"}}}
@@ -218,8 +218,8 @@ func TestGradePromotesRelevantEvidenceAndSeesHistory(t *testing.T) {
 	for _, c := range s.Evidence {
 		order = append(order, c.Chunk.ID)
 	}
-	if s.Verdict != Sufficient || !slices.Equal(order, []string{"c", "a", "b", "d"}) {
-		t.Errorf("verdict %v, evidence order %v; want relevant c, a first", s.Verdict, order)
+	if s.Verdict != Sufficient || !slices.Equal(order, []string{"a", "b", "c", "d"}) {
+		t.Errorf("verdict %v, evidence order %v; want sufficient, retrieval order kept", s.Verdict, order)
 	}
 	if !strings.Contains(llm.prompts[0], "Conversation so far:\nuser: tell me about chunk context") {
 		t.Errorf("a follow-up must be graded with its history:\n%s", llm.prompts[0])

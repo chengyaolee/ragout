@@ -59,9 +59,10 @@ const (
 
 // Grade asks a model which passages of State.Evidence help answer State.Standalone,
 // the way corrective RAG grades each retrieved document. If at least one does, the
-// verdict is Sufficient and the helpful passages move to the front of the evidence, so
-// generation reads them first. If none does, the verdict is Insufficient and
-// State.Missing holds the model's suggested search, if it gave one.
+// verdict is Sufficient. If none does, the verdict is Insufficient and State.Missing
+// holds the model's suggested search, if it gave one. The evidence keeps its retrieval
+// order: on the docs benchmark, moving the grader's picks to the front lowered MRR from
+// 0.60 to 0.39, because a small grader often picks a neighbor of the passage that answers.
 //
 // Grading relevance passage by passage is a simpler judgment than "is this enough to
 // answer?", and small models make it far more reliably: on this module's docs
@@ -113,7 +114,6 @@ func Grade(c ragout.Completer) Step {
 			return nil
 		}
 		s.Verdict = Sufficient
-		s.Evidence = promote(s.Evidence, relevant)
 		return nil
 	})
 }
@@ -171,23 +171,6 @@ func searchLine(l string) string {
 		return ""
 	}
 	return l
-}
-
-// promote moves the chunks at the given indexes to the front, in the given order,
-// keeping the rest after them in their original order.
-func promote(chunks []ragout.ScoredChunk, first []int) []ragout.ScoredChunk {
-	out := make([]ragout.ScoredChunk, 0, len(chunks))
-	taken := make(map[int]bool, len(first))
-	for _, i := range first {
-		out = append(out, chunks[i])
-		taken[i] = true
-	}
-	for i, c := range chunks {
-		if !taken[i] {
-			out = append(out, c)
-		}
-	}
-	return out
 }
 
 // Refine makes the grader's Missing text the next search.
