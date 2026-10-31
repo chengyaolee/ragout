@@ -2,7 +2,6 @@ package reranker
 
 import (
 	"math"
-	"sort"
 
 	"github.com/chengyaolee/ragout"
 )
@@ -77,39 +76,15 @@ func LogisticSigmoidNormalization(chunks []ragout.ScoredChunk, temperature float
 	return normalized
 }
 
-// ConvexScoreCombination (alpha-Blending) normalizes scores and blends them:
-// Score = alpha * DenseScore + (1 - alpha) * SparseScore
+// ConvexScoreCombination blends one dense list and one sparse list. It is
+// ragout.ConvexBlend(alpha, 1) on those two lists. alpha outside [0, 1] or a
+// non-positive topK returns nil.
 func ConvexScoreCombination(dense []ragout.ScoredChunk, sparse []ragout.ScoredChunk, topK int, alpha float64) []ragout.ScoredChunk {
 	if alpha < 0 || alpha > 1 || topK <= 0 {
 		return nil
 	}
-
-	weight := alpha
-	combined := make(map[string]ragout.ScoredChunk)
-	for _, chunk := range LogisticSigmoidNormalization(dense, 1) {
-		got := combined[chunk.Chunk.ID]
-		got.Chunk = chunk.Chunk
-		got.DenseScore = chunk.DenseScore
-		got.Score = weight * chunk.Score
-		combined[chunk.Chunk.ID] = got
-	}
-	for _, chunk := range LogisticSigmoidNormalization(sparse, 1) {
-		got := combined[chunk.Chunk.ID]
-		got.Chunk = chunk.Chunk
-		got.SparseScore = chunk.SparseScore
-		got.Score += (1.0 - weight) * chunk.Score
-		combined[chunk.Chunk.ID] = got
-	}
-
-	results := make([]ragout.ScoredChunk, 0, len(combined))
-	for _, chunk := range combined {
-		results = append(results, chunk)
-	}
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
-	})
-	if topK > len(results) {
-		topK = len(results)
-	}
-	return results[:topK]
+	return ragout.ConvexBlend(alpha, 1).Fuse(
+		[]ragout.RankedList{{Dense: true, Hits: dense}, {Hits: sparse}},
+		topK,
+	)
 }

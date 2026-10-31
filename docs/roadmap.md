@@ -15,18 +15,13 @@ This page is the public list of milestones. Each unshipped item is specified as 
 - Stable chunk IDs, a rollback when one store write fails, `DeleteSource`, and replace-on-ingest.
 - Chunk context: a title and section breadcrumb by default, or LLM-written context (`contextual.New`, Anthropic's contextual retrieval). See [Give chunks context](how-to/chunk-context.md).
 - Query rewriting: condense with history, multi-query, decomposition, and HyDE, with per-index searches, a timeout, and fallback. See [Rewrite questions](how-to/query-rewrite.md).
-- Pluggable fusion over any number of result lists, RRF by default.
+- Pluggable fusion over any number of result lists, weighted reciprocal rank fusion by default.
+- Score blending: `ConvexBlend(alpha, rewriteWeight)`, selected with `WithFusion`. Each chunk keeps the best sigmoid-normalized dense score and sparse score. The default remains weighted reciprocal rank fusion.
 - Neighbor and section expansion before generation. See [Widen hits](how-to/expand-hits.md).
 - Optional conversation history in the answer prompt.
 - `Retrieve` and the `eval` package for measuring retrieval, with per-category scoring, nDCG, and a benchmark runner. Results for this repository's docs and BEIR SciFact are in [eval/results](../eval/results/). See [Measure retrieval](how-to/evaluate.md).
 - A local cross-encoder reranker over HTTP: bge-reranker-v2-m3 by default, Qwen3-Reranker-4B as an option. See [Rerank results](how-to/rerank.md).
 - Retrieval workflows (`flow`): a graph of swappable steps, with a corrective-RAG preset that grades evidence, searches again for what is missing, and abstains when it stays insufficient. See [Build retrieval workflows](how-to/workflows.md).
-
-## Score-blending fusion
-
-Status: not in this release.
-
-`WithFusion` accepts any `FusionStrategy`, and RRF is the only built-in one. `reranker.ConvexScoreCombination` already blends sigmoid-normalized dense and sparse scores for one dense and one sparse list. A built-in convex strategy waits on a question this release does not answer: with several searches per question, there is no single dense and sparse score to blend.
 
 ## Workflow extensions
 
@@ -60,7 +55,6 @@ Status: not in this release. Chroma and Qdrant are already supported and are not
 
 Status: not in this release. Each waits on evidence from the evaluation that it is needed.
 
-- Weighted fusion, so rephrasings count less than the question itself.
 - A per-sub-question quota before the final cut, so `Decompose` evidence for one part of a question is not crowded out.
 - Filter extraction from the question (self-query), with an explicit allow-list of fields.
 

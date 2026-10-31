@@ -355,6 +355,9 @@ func (e *Engine) retrieveCandidates(ctx context.Context, question string, search
 		if r, isRRF := e.fusion.(rrf); isRRF {
 			attrs = append(attrs, attribute.Int("rrf_k", r.k), attribute.Float64("rewrite_weight", r.rewrite))
 		}
+		if c, ok := e.fusion.(convex); ok {
+			attrs = append(attrs, attribute.Float64("alpha", c.alpha), attribute.Float64("rewrite_weight", c.rewrite))
+		}
 		_, fuseSpan := startSpan(ctx, "query.rrf_fusion", attrs...)
 		candidates = e.fusion.Fuse(hits, params.TopKRecall)
 		fuseSpan.SetAttributes(attribute.Int("fused_count", len(candidates)))

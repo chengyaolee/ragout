@@ -38,7 +38,7 @@ engine, err := ragout.NewEngine(
 | `WithReplaceSource` | `Ingest` replaces a source instead of adding to it. See [Update and delete sources](../how-to/update-sources.md). |
 | `WithQueryTransformer` | Rewrites each question before retrieval. Default none. See [Rewrite questions](../how-to/query-rewrite.md). |
 | `WithTransformTimeout` | Deadline for the transformer; on timeout the query falls back to the original question. Default none. |
-| `WithFusion` | Replaces the default fusion, `WeightedRRF(k, 0.5)`: rank fusion in which a query transformer's added searches count half as much as the question's own. `RRF(k)` weights every list equally. |
+| `WithFusion` | Replaces the default fusion, `WeightedRRF(k, 0.5)`: rank fusion in which a query transformer's added searches count half as much as the question's own. `RRF(k)` weights every list equally. `ConvexBlend(alpha, rewriteWeight)` blends the best sigmoid-normalized dense score and sparse score, with `alpha` as the dense weight. |
 | `WithMinDenseScore` | Drops dense hits whose `DenseScore` is below the floor, before fusion. A vector store always returns its nearest chunks, however unrelated; with a floor, a question nothing matches gets `ErrNoResults`. BM25 hits are not affected. The right value depends on the embedding model: calibrate it on your data. Default 0, off. |
 | `WithDenseFailOpen` | When embedding the question or the vector search fails, the query falls back to BM25 and reports the error in `Answer.DenseErr`. Needs an index store. Ingest is unaffected. Default off: the query fails. |
 | `WithExpander` | Widens hits before generation. Default none. See [Widen hits](../how-to/expand-hits.md). |

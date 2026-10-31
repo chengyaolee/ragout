@@ -298,3 +298,53 @@ func TestWeightedRRFDiscountsRewrites(t *testing.T) {
 		t.Errorf("no rewrites: %v vs %v", a[0].Score, b[0].Score)
 	}
 }
+
+func TestConvexBlendUsesScoreMagnitude(t *testing.T) {
+	// consensus is rank 1 on both lists with tiny scores. The BM25 spike is only rank 2,
+	// but its score is far larger. Rank fusion keeps consensus; blending with a low
+	// dense weight keeps the spike.
+	lists := []ragout.RankedList{
+		{Dense: true, Hits: []ragout.ScoredChunk{
+			{Chunk: ragout.Chunk{ID: "consensus"}, DenseScore: -0.2, Score: 0.15},
+		}},
+		{Hits: []ragout.ScoredChunk{
+			{Chunk: ragout.Chunk{ID: "consensus"}, SparseScore: 0.3, Score: 0.3},
+			{Chunk: ragout.Chunk{ID: "spike"}, SparseScore: 25, Score: 25},
+		}},
+	}
+	if got := ragout.RRF(60).Fuse(lists, 1); got[0].Chunk.ID != "consensus" {
+		t.Errorf("RRF top = %s, want consensus", got[0].Chunk.ID)
+	}
+	got := ragout.ConvexBlend(0.3, 1).Fuse(lists, 2)
+	if len(got) != 2 || got[0].Chunk.ID != "spike" {
+		t.Fatalf("blend top = %+v, want spike", got)
+	}
+	var consensus ragout.ScoredChunk
+	for _, sc := range got {
+		if sc.Chunk.ID == "consensus" {
+			consensus = sc
+		}
+	}
+	if consensus.DenseScore != -0.2 || consensus.SparseScore != 0.3 {
+		t.Errorf("consensus scores = dense %v sparse %v, want -0.2 and 0.3", consensus.DenseScore, consensus.SparseScore)
+	}
+
+	// A higher-scoring rewrite wins at equal weight and loses at half weight.
+	rewrites := []ragout.RankedList{
+		{Dense: true, Hits: []ragout.ScoredChunk{{Chunk: ragout.Chunk{ID: "q"}, Score: 1}}},
+		{Dense: true, Rewrite: true, Hits: []ragout.ScoredChunk{{Chunk: ragout.Chunk{ID: "r"}, Score: 3}}},
+	}
+	if top := ragout.ConvexBlend(1, 1).Fuse(rewrites, 1); top[0].Chunk.ID != "r" {
+		t.Errorf("equal weight top = %s, want r", top[0].Chunk.ID)
+	}
+	if top := ragout.ConvexBlend(1, 0.5).Fuse(rewrites, 1); top[0].Chunk.ID != "q" {
+		t.Errorf("half weight top = %s, want q", top[0].Chunk.ID)
+	}
+	// A non-positive rewrite weight counts as 1, and an alpha outside [0, 1] as 0.5.
+	if a, b := ragout.ConvexBlend(1, 0).Fuse(rewrites, 1), ragout.ConvexBlend(1, 1).Fuse(rewrites, 1); a[0].Chunk.ID != b[0].Chunk.ID || a[0].Score != b[0].Score {
+		t.Errorf("rewriteWeight 0 = %+v, want %+v", a[0], b[0])
+	}
+	if a, b := ragout.ConvexBlend(2, 1).Fuse(lists, 1), ragout.ConvexBlend(0.5, 1).Fuse(lists, 1); a[0].Chunk.ID != b[0].Chunk.ID || a[0].Score != b[0].Score {
+		t.Errorf("alpha 2 = %+v, want %+v", a[0], b[0])
+	}
+}

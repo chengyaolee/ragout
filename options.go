@@ -41,7 +41,8 @@ func WithReplaceSource() EngineOption {
 }
 
 // WithFusion replaces the default fusion of retrieval result lists,
-// WeightedRRF(WithRRFK value, DefaultRewriteWeight). RRF(k) gives every list equal weight.
+// WeightedRRF(WithRRFK value, DefaultRewriteWeight). RRF(k) gives every list equal
+// weight. ConvexBlend(alpha, rewriteWeight) blends sigmoid-normalized scores.
 func WithFusion(f FusionStrategy) EngineOption {
 	return func(e *Engine) { e.fusion = f }
 }

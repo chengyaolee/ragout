@@ -10,7 +10,7 @@ Rerank(ctx context.Context, query string, candidates []ScoredChunk, topN int) ([
 
 The engine calls it after fusion, with the recall list and `topN`. The returned slice is what the generator sees. An error fails the query. An empty candidate list or a non-positive `topN` returns an empty slice.
 
-The same package holds fusion helpers. `ReciprocalRankFusion` is the two-list form of the engine's default fusion. `ConvexScoreCombination`, `MinMaxNormalization`, and `LogisticSigmoidNormalization` are available for callers who want to blend raw scores themselves; pass a `ragout.FusionStrategy` to `WithFusion` to use them in the engine.
+The same package holds fusion helpers. `ReciprocalRankFusion` is the two-list form of the engine's default fusion. `ConvexScoreCombination` is `ragout.ConvexBlend` on one dense list and one sparse list. `MinMaxNormalization` and `LogisticSigmoidNormalization` are the scaling helpers next to it. Pass `ragout.ConvexBlend` to `WithFusion` to use the blend in the engine.
 
 ## Local cross-encoder (HTTP)
 
