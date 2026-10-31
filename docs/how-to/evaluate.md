@@ -76,7 +76,7 @@ Question sets and downloaded benchmarks live in `eval/data/`, which is gitignore
 
 ## Integration tests
 
-The `integration` package runs the library against real services. Each test is skipped unless its environment variable is set, so `go test ./...` stays offline.
+The `test/integration` package runs the library against real services. Each test is skipped unless its environment variable is set, so `go test ./...` stays offline.
 
 | Variable | Service |
 | --- | --- |
@@ -88,7 +88,7 @@ The `integration` package runs the library against real services. Each test is s
 
 ```bash
 docker run -d -p 6333:6333 qdrant/qdrant
-RAGOUT_IT_QDRANT_URL=http://localhost:6333 go test ./integration -v
+RAGOUT_IT_QDRANT_URL=http://localhost:6333 go test ./test/integration -v
 ```
 
 Each store run uses a new collection and deletes it afterwards.

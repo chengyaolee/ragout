@@ -81,3 +81,4 @@ All notable changes to this module, by date, oldest first. Each entry names the 
 ## October 31, 2026
 
 - **Score blending:** `ragout.ConvexBlend(alpha, rewriteWeight)`, an opt-in fusion selected with `WithFusion`. Each chunk keeps the best sigmoid-normalized dense score and sparse score, rewrite lists count `rewriteWeight` times as much, and the fused score is `alpha*dense + (1-alpha)*sparse`. The default remains `WeightedRRF`. `reranker.ConvexScoreCombination` is that blend for one dense list and one sparse list.
+- **Test doubles moved (Breaking):** the offline stand-ins now live in `ragouttest`. Replace `embedder.NewMockEmbedder` with `ragouttest.NewEmbedder`, `reranker.NewMockReranker` with `ragouttest.NewReranker`, and `generator.NewMockGenerator` with `ragouttest.NewGenerator`. The integration tests moved from `integration` to `test/integration`.

@@ -10,10 +10,8 @@ import (
 
 	"github.com/chengyaolee/ragout"
 	"github.com/chengyaolee/ragout/chunker"
-	"github.com/chengyaolee/ragout/embedder"
-	"github.com/chengyaolee/ragout/generator"
+	"github.com/chengyaolee/ragout/ragouttest"
 	"github.com/chengyaolee/ragout/reader"
-	"github.com/chengyaolee/ragout/reranker"
 	"github.com/chengyaolee/ragout/store"
 )
 
@@ -26,7 +24,7 @@ func TestEngine_EndToEndHybrid(t *testing.T) {
 	ctx := context.Background()
 	vs := store.NewVectorStore()
 	idx := store.NewBM25Index()
-	emb, err := embedder.NewMockEmbedder(8, 0)
+	emb, err := ragouttest.NewEmbedder(8, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,8 +39,8 @@ func TestEngine_EndToEndHybrid(t *testing.T) {
 		ragout.WithEmbedder(emb),
 		ragout.WithVectorStore(vs),
 		ragout.WithIndexStore(idx),
-		ragout.WithReranker(reranker.NewMockReranker()),
-		ragout.WithGenerator(generator.NewMockGenerator([]string{answerText})),
+		ragout.WithReranker(ragouttest.NewReranker()),
+		ragout.WithGenerator(ragouttest.NewGenerator([]string{answerText})),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +135,7 @@ func TestEngine_GracefulDegradation(t *testing.T) {
 			rrfK = 60
 		)
 		facts := "Channels prevent race conditions via ownership.\n\nMutexes guard shared memory across goroutines."
-		emb, err := embedder.NewMockEmbedder(8, 0)
+		emb, err := ragouttest.NewEmbedder(8, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -153,7 +151,7 @@ func TestEngine_GracefulDegradation(t *testing.T) {
 			ragout.WithEmbedder(emb),
 			ragout.WithVectorStore(vs),
 			ragout.WithIndexStore(idx),
-			ragout.WithGenerator(generator.NewMockGenerator([]string{answerText})),
+			ragout.WithGenerator(ragouttest.NewGenerator([]string{answerText})),
 			ragout.WithTopKRecall(topK),
 			ragout.WithTopNRerank(topN),
 			ragout.WithRRFK(rrfK),
@@ -295,7 +293,7 @@ func TestEngine_IngestRollback(t *testing.T) {
 	ctx := context.Background()
 	vs := store.NewVectorStore()
 	fIdx := &flakyIndexStore{inner: store.NewBM25Index(), failIndex: true}
-	emb, err := embedder.NewMockEmbedder(8, 0)
+	emb, err := ragouttest.NewEmbedder(8, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +307,7 @@ func TestEngine_IngestRollback(t *testing.T) {
 		ragout.WithEmbedder(emb),
 		ragout.WithVectorStore(vs),
 		ragout.WithIndexStore(fIdx),
-		ragout.WithGenerator(generator.NewMockGenerator(nil)),
+		ragout.WithGenerator(ragouttest.NewGenerator(nil)),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -353,9 +351,9 @@ func TestEngine_IngestRollback(t *testing.T) {
 }
 
 // testEngine builds a pipeline with the requested stores. Dense search includes the vector store; sparse search includes the BM25 index.
-func testEngine(t *testing.T, dense, sparse, rerank bool) (*ragout.Engine, *embedder.MockEmbedder, *store.VectorStore, *store.BM25Index) {
+func testEngine(t *testing.T, dense, sparse, rerank bool) (*ragout.Engine, *ragouttest.Embedder, *store.VectorStore, *store.BM25Index) {
 	t.Helper()
-	emb, err := embedder.NewMockEmbedder(8, 0)
+	emb, err := ragouttest.NewEmbedder(8, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +367,7 @@ func testEngine(t *testing.T, dense, sparse, rerank bool) (*ragout.Engine, *embe
 	opts := []ragout.EngineOption{
 		ragout.WithReader(reader.NewTextReader(1 << 20)),
 		ragout.WithChunker(ch),
-		ragout.WithGenerator(generator.NewMockGenerator([]string{"tok-a", "tok-b", "tok-c", "tok-d"})),
+		ragout.WithGenerator(ragouttest.NewGenerator([]string{"tok-a", "tok-b", "tok-c", "tok-d"})),
 	}
 	if dense {
 		opts = append(opts, ragout.WithEmbedder(emb), ragout.WithVectorStore(vs))
@@ -378,7 +376,7 @@ func testEngine(t *testing.T, dense, sparse, rerank bool) (*ragout.Engine, *embe
 		opts = append(opts, ragout.WithIndexStore(idx))
 	}
 	if rerank {
-		opts = append(opts, ragout.WithReranker(reranker.NewMockReranker()))
+		opts = append(opts, ragout.WithReranker(ragouttest.NewReranker()))
 	}
 	e, err := ragout.NewEngine(opts...)
 	if err != nil {

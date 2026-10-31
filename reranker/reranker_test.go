@@ -24,24 +24,6 @@ func TestMMR_Deduplication(t *testing.T) {
 	}
 }
 
-func TestMockReranker(t *testing.T) {
-	var _ ragout.Reranker = (*MockReranker)(nil)
-
-	candidates := []ragout.ScoredChunk{
-		{Chunk: ragout.Chunk{ID: "dogs", Content: "dogs run"}},
-		{Chunk: ragout.Chunk{ID: "both", Content: "the cats sleep here"}},
-		{Chunk: ragout.Chunk{ID: "cats", Content: "cats"}},
-	}
-
-	got, err := NewMockReranker().Rerank(context.Background(), "cats sleep", candidates, 2)
-	if err != nil {
-		t.Fatalf("rerank: %v", err)
-	}
-	if len(got) != 2 || got[0].Chunk.ID != "both" || got[0].Score != 2 || got[1].Chunk.ID != "cats" || got[1].Score != 1 {
-		t.Fatalf("got %#v, want both (2) then cats (1)", got)
-	}
-}
-
 func TestMMRReranker_Interface(t *testing.T) {
 	var _ ragout.Reranker = (*MMRReranker)(nil)
 

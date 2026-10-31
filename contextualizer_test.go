@@ -7,7 +7,7 @@ import (
 
 	"github.com/chengyaolee/ragout"
 	"github.com/chengyaolee/ragout/chunker"
-	"github.com/chengyaolee/ragout/generator"
+	"github.com/chengyaolee/ragout/ragouttest"
 	"github.com/chengyaolee/ragout/reader"
 	"github.com/chengyaolee/ragout/store"
 )
@@ -122,7 +122,7 @@ func TestEngine_ExpanderRunsBeforeGeneration(t *testing.T) {
 		ragout.WithReader(newTextReaderForTest()),
 		ragout.WithChunker(newChunkerForTest(t)),
 		ragout.WithIndexStore(newBM25ForTest()),
-		ragout.WithGenerator(generator.NewMockGenerator(nil)),
+		ragout.WithGenerator(ragouttest.NewGenerator(nil)),
 		ragout.WithExpander(upperExpander{}),
 	)
 	if err != nil {

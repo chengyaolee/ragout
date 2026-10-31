@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/chengyaolee/ragout"
-	"github.com/chengyaolee/ragout/embedder"
+	"github.com/chengyaolee/ragout/ragouttest"
 	"github.com/chengyaolee/ragout/store"
 	dto "github.com/prometheus/client_model/go"
 )
@@ -67,7 +67,7 @@ func (q *questionRecorder) GenerateIter(_ context.Context, query string, c []rag
 
 func rewriteEngine(t *testing.T, tr ragout.QueryTransformer) (*ragout.Engine, *countingEmbedder, *recordingIndex, *questionRecorder) {
 	t.Helper()
-	mock, err := embedder.NewMockEmbedder(8, 0)
+	mock, err := ragouttest.NewEmbedder(8, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func (slowTransformer) Transform(ctx context.Context, _ string, _ []ragout.Turn)
 }
 
 func TestQueryRewrite_TimeoutFallsBack(t *testing.T) {
-	mock, _ := embedder.NewMockEmbedder(8, 0)
+	mock, _ := ragouttest.NewEmbedder(8, 0)
 	rec := &questionRecorder{}
 	e, err := ragout.NewEngine(
 		ragout.WithReader(newTextReaderForTest()),

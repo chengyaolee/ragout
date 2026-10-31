@@ -5,7 +5,7 @@
 [![test](https://github.com/chengyaolee/ragout/actions/workflows/test.yml/badge.svg)](https://github.com/chengyaolee/ragout/actions/workflows/test.yml)
 
 <p align="center">
-  <img src="ragout.png" alt="ragout: Go build your RAG pipeline end-to-end" width="720" />
+  <img src="docs/assets/ragout.png" alt="ragout: Go build your RAG pipeline end-to-end" width="720" />
 </p>
 
 ## Why Ragout
@@ -39,7 +39,7 @@ go test ./...
 go run ./examples/demo
 ```
 
-`go test` is the full suite. [`examples/demo`](examples/demo/main.go) indexes three short notes in memory, runs hybrid search, and prints the cited chunk. The embedder is a local stand-in. Swap it for `embedder.NewOpenAIEmbedder` or `embedder.NewOllamaEmbedder` when you want real vectors.
+`go test` is the full suite. [`examples/demo`](examples/demo/main.go) indexes three short notes in memory, runs hybrid search, and prints the cited chunk. The embedder is a local stand-in from `ragouttest`. Swap it for `embedder.NewOpenAIEmbedder` or `embedder.NewOllamaEmbedder` when you want real vectors.
 
 ## Overview
 
@@ -120,6 +120,7 @@ Ingest splits the document by section, chunks it, adds each chunk's title and se
 | Expanders | [`expand`](docs/how-to/expand-hits.md) | Neighbor chunks, or the whole section |
 | Generators | [`generator`](docs/components/generators.md) | OpenAI and Ollama, with a context budget and optional history |
 | Evaluation | [`eval`](docs/how-to/evaluate.md) | Hit rate, recall, and MRR over your own questions |
+| Test doubles | [`ragouttest`](ragouttest/ragouttest.go) | Deterministic offline embedder, reranker, and generator |
 
 ## Documentation
 

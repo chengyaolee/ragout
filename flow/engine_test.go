@@ -8,7 +8,7 @@ import (
 	"github.com/chengyaolee/ragout"
 	"github.com/chengyaolee/ragout/chunker"
 	"github.com/chengyaolee/ragout/flow"
-	"github.com/chengyaolee/ragout/generator"
+	"github.com/chengyaolee/ragout/ragouttest"
 	"github.com/chengyaolee/ragout/reader"
 	"github.com/chengyaolee/ragout/store"
 )
@@ -43,7 +43,7 @@ func TestCRAGWithEngine(t *testing.T) {
 	}
 
 	grader := &replies{"NONE\nbilling hosting region", "1"}
-	s, err := flow.CRAG(e, grader, generator.NewMockGenerator(nil)).Run(ctx, "who owns billing")
+	s, err := flow.CRAG(e, grader, ragouttest.NewGenerator(nil)).Run(ctx, "who owns billing")
 	if err != nil {
 		t.Fatal(err)
 	}

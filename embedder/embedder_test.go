@@ -10,40 +10,8 @@ import (
 
 	"github.com/chengyaolee/ragout"
 	"github.com/chengyaolee/ragout/embedder"
+	"github.com/chengyaolee/ragout/ragouttest"
 )
-
-func TestMockEmbedder(t *testing.T) {
-	m, err := embedder.NewMockEmbedder(4, 50*time.Millisecond)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if m.Dimension() != 4 {
-		t.Fatalf("dim = %d, want 4", m.Dimension())
-	}
-	start := time.Now()
-	first, err := m.EmbedBatch(context.Background(), []string{"cat", "cat", "dog"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if time.Since(start) < 40*time.Millisecond {
-		t.Fatal("EmbedBatch returned before the configured latency")
-	}
-	second, err := m.EmbedBatch(context.Background(), []string{"cat", "cat", "dog"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(first) != 3 || len(first[0]) != 4 {
-		t.Fatalf("vectors = %d x %d, want 3 x 4", len(first), len(first[0]))
-	}
-	for d := range first[0] {
-		if first[0][d] != first[1][d] || first[0][d] != second[0][d] {
-			t.Fatalf("same text produced different vectors")
-		}
-		if first[0][d] == first[2][d] {
-			t.Fatalf("different texts produced the same vector component %d", d)
-		}
-	}
-}
 
 func BenchmarkEmbedConcurrent(b *testing.B) {
 	const (
@@ -52,7 +20,7 @@ func BenchmarkEmbedConcurrent(b *testing.B) {
 	)
 	for _, workers := range []int{1, 4, 16} {
 		b.Run(fmt.Sprintf("workers=%d", workers), func(b *testing.B) {
-			m, err := embedder.NewMockEmbedder(8, 50*time.Millisecond)
+			m, err := ragouttest.NewEmbedder(8, 50*time.Millisecond)
 			if err != nil {
 				b.Fatal(err)
 			}

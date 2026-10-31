@@ -9,7 +9,7 @@
 //	RAGOUT_IT_OPENAI_API_KEY     spends a few cents of OpenAI usage
 //
 // Example: docker run -p 6333:6333 qdrant/qdrant, then
-// RAGOUT_IT_QDRANT_URL=http://localhost:6333 go test ./integration -v
+// RAGOUT_IT_QDRANT_URL=http://localhost:6333 go test ./test/integration -v
 package integration_test
 
 import (

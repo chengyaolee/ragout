@@ -7,14 +7,14 @@ import (
 	"testing"
 
 	"github.com/chengyaolee/ragout"
-	"github.com/chengyaolee/ragout/embedder"
+	"github.com/chengyaolee/ragout/ragouttest"
 	"github.com/chengyaolee/ragout/reader"
 	"github.com/chengyaolee/ragout/store"
 )
 
 func sourceEngine(t *testing.T, replace bool) (*ragout.Engine, *store.VectorStore, *store.BM25Index) {
 	t.Helper()
-	emb, err := embedder.NewMockEmbedder(8, 0)
+	emb, err := ragouttest.NewEmbedder(8, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
