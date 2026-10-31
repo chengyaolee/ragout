@@ -74,6 +74,10 @@ go run ./eval/cmd/bench -suite scifact -bge http://localhost:8082/v1/rerank -qwe
 
 Question sets and downloaded benchmarks live in `eval/data/`, which is gitignored. Only the reports in `eval/results/` are committed. The `scifact` suite downloads itself. The `docs` question set is not in the repository yet, so that suite runs only where the file exists. It needs Ollama with `nomic-embed-text` and a chat model (default `qwen2.5:3b`, run at temperature 0 so results repeat). The reranker rows are skipped unless their servers are given.
 
+## Library tests
+
+`go test ./...` runs the suite offline. Tests of the root package are in `test/ragout`. Every other package keeps its tests beside its code. The offline embedder, reranker, and generator those tests use are in `ragouttest`.
+
 ## Integration tests
 
 The `test/integration` package runs the library against real services. Each test is skipped unless its environment variable is set, so `go test ./...` stays offline.

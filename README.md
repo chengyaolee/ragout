@@ -39,7 +39,7 @@ go test ./...
 go run ./examples/demo
 ```
 
-`go test` is the full suite. [`examples/demo`](examples/demo/main.go) indexes three short notes in memory, runs hybrid search, and prints the cited chunk. The embedder is a local stand-in from `ragouttest`. Swap it for `embedder.NewOpenAIEmbedder` or `embedder.NewOllamaEmbedder` when you want real vectors.
+`go test ./...` is the full suite. Tests of the engine are in `test/ragout`; every other package keeps its tests beside its code. [`examples/demo`](examples/demo/main.go) indexes three short notes in memory, runs hybrid search, and prints the cited chunk. The embedder is a local stand-in from `ragouttest`. Swap it for `embedder.NewOpenAIEmbedder` or `embedder.NewOllamaEmbedder` when you want real vectors.
 
 ## Overview
 

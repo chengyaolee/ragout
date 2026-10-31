@@ -37,6 +37,8 @@ go run ./examples/demo
 
 The demo indexes three notes in memory and prints the chunk hybrid search cited. The [quickstart](quickstart.md) is the same engine pointed at OpenAI. [Ollama](local.md) is the local-model version.
 
+Tests of the engine are in `test/ragout`. Tests of the other packages sit next to that package. `ragouttest` is the offline embedder, reranker, and generator.
+
 ## Next
 
 Build the [quickstart](quickstart.md), or run the same pipeline on [Ollama](local.md).

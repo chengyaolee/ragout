@@ -1,4 +1,4 @@
-package ragout
+package ragout_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chengyaolee/ragout"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"go.opentelemetry.io/otel"
@@ -33,7 +34,7 @@ func TestQuerySpanTreeAndStageMetrics(t *testing.T) {
 		before[stage] = histogramCount(t, stage)
 	}
 
-	e := testEngine(t)
+	e := tracedEngine(t)
 	answer, err := e.Query(context.Background(), "channels")
 	if err != nil {
 		t.Fatalf("Query: %v", err)
@@ -106,9 +107,9 @@ func TestQuerySpanTreeAndStageMetrics(t *testing.T) {
 func TestQuerySpanRecordsError(t *testing.T) {
 	spanRec.Reset()
 
-	e := testEngine(t)
+	e := tracedEngine(t)
 	_, err := e.Query(context.Background(), "   ")
-	if err != ErrEmptyQuery {
+	if err != ragout.ErrEmptyQuery {
 		t.Fatalf("err = %v", err)
 	}
 	var root sdktrace.ReadOnlySpan
@@ -127,7 +128,7 @@ func TestQuerySpanRecordsError(t *testing.T) {
 
 func TestIngestCountsChunks(t *testing.T) {
 	before := counterValue(t)
-	e := testEngine(t)
+	e := tracedEngine(t)
 	if err := e.Ingest(context.Background(), "doc.txt", strings.NewReader("ignored"), nil); err != nil {
 		t.Fatalf("Ingest: %v", err)
 	}
@@ -137,7 +138,7 @@ func TestIngestCountsChunks(t *testing.T) {
 }
 
 func BenchmarkEngine_Query(b *testing.B) {
-	e := testEngine(b)
+	e := tracedEngine(b)
 	ctx := context.Background()
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -153,16 +154,16 @@ type testTB interface {
 	Fatal(args ...any)
 }
 
-func testEngine(tb testTB) *Engine {
+func tracedEngine(tb testTB) *ragout.Engine {
 	tb.Helper()
-	e, err := NewEngine(
-		WithReader(staticReader{}),
-		WithChunker(staticChunker{}),
-		WithEmbedder(staticEmbedder{}),
-		WithVectorStore(staticDense{}),
-		WithIndexStore(staticSparse{terms: 2}),
-		WithReranker(echoReranker{}),
-		WithGenerator(echoGenerator{}),
+	e, err := ragout.NewEngine(
+		ragout.WithReader(staticReader{}),
+		ragout.WithChunker(staticChunker{}),
+		ragout.WithEmbedder(staticEmbedder{}),
+		ragout.WithVectorStore(staticDense{}),
+		ragout.WithIndexStore(staticSparse{terms: 2}),
+		ragout.WithReranker(echoReranker{}),
+		ragout.WithGenerator(echoGenerator{}),
 	)
 	if err != nil {
 		tb.Fatal(err)
@@ -172,14 +173,14 @@ func testEngine(tb testTB) *Engine {
 
 type staticReader struct{}
 
-func (staticReader) Read(context.Context, io.Reader, map[string]any) ([]Document, error) {
-	return []Document{{ID: "d", Content: "channels serialize access"}}, nil
+func (staticReader) Read(context.Context, io.Reader, map[string]any) ([]ragout.Document, error) {
+	return []ragout.Document{{ID: "d", Content: "channels serialize access"}}, nil
 }
 
 type staticChunker struct{}
 
-func (staticChunker) Chunk(context.Context, Document) ([]Chunk, error) {
-	return []Chunk{
+func (staticChunker) Chunk(context.Context, ragout.Document) ([]ragout.Chunk, error) {
+	return []ragout.Chunk{
 		{ID: "c1", Content: "channels serialize access"},
 		{ID: "c2", Content: "mutexes too"},
 	}, nil
@@ -198,10 +199,10 @@ func (staticEmbedder) Dimension() int { return 2 }
 
 type staticDense struct{}
 
-func (staticDense) Upsert(context.Context, []Chunk) error { return nil }
-func (staticDense) SearchDense(context.Context, []float32, int, map[string]any) ([]ScoredChunk, error) {
-	return []ScoredChunk{{
-		Chunk:      Chunk{ID: "c1", Content: "channels serialize access"},
+func (staticDense) Upsert(context.Context, []ragout.Chunk) error { return nil }
+func (staticDense) SearchDense(context.Context, []float32, int, map[string]any) ([]ragout.ScoredChunk, error) {
+	return []ragout.ScoredChunk{{
+		Chunk:      ragout.Chunk{ID: "c1", Content: "channels serialize access"},
 		DenseScore: 1,
 		Score:      1,
 	}}, nil
@@ -210,10 +211,10 @@ func (staticDense) Delete(context.Context, []string) error { return nil }
 
 type staticSparse struct{ terms int }
 
-func (staticSparse) Index(context.Context, []Chunk) error { return nil }
-func (staticSparse) SearchSparse(context.Context, string, int, map[string]any) ([]ScoredChunk, error) {
-	return []ScoredChunk{{
-		Chunk:       Chunk{ID: "c1", Content: "channels serialize access"},
+func (staticSparse) Index(context.Context, []ragout.Chunk) error { return nil }
+func (staticSparse) SearchSparse(context.Context, string, int, map[string]any) ([]ragout.ScoredChunk, error) {
+	return []ragout.ScoredChunk{{
+		Chunk:       ragout.Chunk{ID: "c1", Content: "channels serialize access"},
 		SparseScore: 1,
 		Score:       1,
 	}}, nil
@@ -223,19 +224,19 @@ func (staticSparse) Delete(context.Context, []string) error { return nil }
 
 type echoReranker struct{}
 
-func (echoReranker) Rerank(context.Context, string, []ScoredChunk, int) ([]ScoredChunk, error) {
-	return []ScoredChunk{{
-		Chunk: Chunk{ID: "c1", Content: "channels serialize access"},
+func (echoReranker) Rerank(context.Context, string, []ragout.ScoredChunk, int) ([]ragout.ScoredChunk, error) {
+	return []ragout.ScoredChunk{{
+		Chunk: ragout.Chunk{ID: "c1", Content: "channels serialize access"},
 		Score: 1,
 	}}, nil
 }
 
 type echoGenerator struct{}
 
-func (echoGenerator) GenerateIter(_ context.Context, _ string, candidates []ScoredChunk) ([]ScoredChunk, iter.Seq2[string, error]) {
+func (echoGenerator) GenerateIter(_ context.Context, _ string, candidates []ragout.ScoredChunk) ([]ragout.ScoredChunk, iter.Seq2[string, error]) {
 	tokens := func(yield func(string, error) bool) {
 		if len(candidates) == 0 || candidates[0].Chunk.Content == "" {
-			yield("", ErrNoResults)
+			yield("", ragout.ErrNoResults)
 			return
 		}
 		yield(candidates[0].Chunk.Content, nil)
@@ -245,7 +246,7 @@ func (echoGenerator) GenerateIter(_ context.Context, _ string, candidates []Scor
 
 func histogramCount(t *testing.T, stage string) uint64 {
 	t.Helper()
-	child := QueryDuration.WithLabelValues(stage)
+	child := ragout.QueryDuration.WithLabelValues(stage)
 	metric, ok := child.(prometheus.Metric)
 	if !ok {
 		t.Fatalf("stage %s observer is not a metric", stage)
@@ -260,7 +261,7 @@ func histogramCount(t *testing.T, stage string) uint64 {
 func counterValue(t *testing.T) float64 {
 	t.Helper()
 	var m dto.Metric
-	if err := IngestedChunksTotal.Write(&m); err != nil {
+	if err := ragout.IngestedChunksTotal.Write(&m); err != nil {
 		t.Fatal(err)
 	}
 	return m.GetCounter().GetValue()
